@@ -16,6 +16,7 @@ import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { deleteItem, getAllItems, getCounts } from '../../src/lib/db';
 import { formatMoney } from '../../src/lib/pricing';
+import { parseDashboardDate } from '../../src/lib/dashboard';
 import { cleanName } from '../../src/lib/listing';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 import type { Item, ItemStatus } from '../../src/lib/types';
@@ -23,6 +24,44 @@ import type { Item, ItemStatus } from '../../src/lib/types';
 type Filter = 'All' | 'To List' | 'Listed' | 'Sold' | 'Draft' | 'Trash';
 
 const FILTERS: Filter[] = ['All', 'To List', 'Listed', 'Sold', 'Draft', 'Trash'];
+
+type Sort = 'newest' | 'oldest' | 'name' | 'costAsc' | 'costDesc' | 'priceDesc';
+
+const SORTS: Array<{ key: Sort; label: string; short: string }> = [
+  { key: 'newest', label: 'Newest first', short: 'Newest' },
+  { key: 'oldest', label: 'Oldest first', short: 'Oldest' },
+  { key: 'name', label: 'Name A–Z', short: 'Name A–Z' },
+  { key: 'costAsc', label: 'Cost: low to high', short: 'Cost ↑' },
+  { key: 'costDesc', label: 'Cost: high to low', short: 'Cost ↓' },
+  { key: 'priceDesc', label: 'Suggested price: high to low', short: 'Price ↓' },
+];
+
+function sortList(list: Item[], sort: Sort): Item[] {
+  const out = [...list];
+  const dateVal = (it: Item) => {
+    const d = parseDashboardDate(it.datePurchased);
+    return d ? d.getTime() : 0;
+  };
+  const byId = (a: Item, b: Item) => a.id.localeCompare(b.id);
+  switch (sort) {
+    case 'newest':
+      return out.sort((a, b) => dateVal(b) - dateVal(a) || byId(a, b));
+    case 'oldest':
+      return out.sort((a, b) => dateVal(a) - dateVal(b) || byId(a, b));
+    case 'name':
+      return out.sort(
+        (a, b) =>
+          cleanName(a.name).toLowerCase().localeCompare(cleanName(b.name).toLowerCase()) ||
+          byId(a, b),
+      );
+    case 'costAsc':
+      return out.sort((a, b) => a.purchase - b.purchase || byId(a, b));
+    case 'costDesc':
+      return out.sort((a, b) => b.purchase - a.purchase || byId(a, b));
+    case 'priceDesc':
+      return out.sort((a, b) => b.suggestedPrice - a.suggestedPrice || byId(a, b));
+  }
+}
 
 const BADGE_COLORS: Record<string, string> = {
   Sold: '#1a7f37',
@@ -79,7 +118,9 @@ export default function InventoryScreen() {
   const [items, setItems] = useState<Item[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<Filter>('To List');
+  const [filter, setFilter] = useState<Filter>('All');
+  const [sort, setSort] = useState<Sort>('newest');
+  const [sortOpen, setSortOpen] = useState(false);
   // Multi-select delete: tap Select, tick the boxes, Delete removes them all.
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -108,12 +149,15 @@ export default function InventoryScreen() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return items.filter(
+    const list = items.filter(
       (it) =>
         matchesFilter(it, filter) &&
         (q === '' || cleanName(it.name).toLowerCase().includes(q) || it.id.toLowerCase() === q),
     );
-  }, [items, query, filter]);
+    return sortList(list, sort);
+  }, [items, query, filter, sort]);
+
+  const sortLabel = SORTS.find((s) => s.key === sort)?.short ?? 'Newest';
 
   const toList = (counts['Draft'] ?? 0) + (counts['Unlisted'] ?? 0);
 
@@ -201,13 +245,21 @@ export default function InventoryScreen() {
       <View style={styles.searchRow}>
         <TextInput
           style={styles.search}
-          placeholder="Search items or RB-001…"
+          placeholder="Search items or RHQ-000001…"
           value={query}
           onChangeText={setQuery}
           autoCapitalize="none"
           returnKeyType="search"
           clearButtonMode="while-editing"
         />
+        <Pressable
+          style={styles.filterBtn}
+          onPress={() => setSortOpen(true)}
+          accessibilityLabel={`Sort, currently ${sortLabel}`}
+        >
+          <Ionicons name="swap-vertical-outline" size={20} color={colors.text} />
+          <Text style={styles.filterBtnText}>{sortLabel}</Text>
+        </Pressable>
         <Pressable
           style={styles.filterBtn}
           onPress={() => setFilterOpen(true)}
@@ -217,6 +269,30 @@ export default function InventoryScreen() {
           <Text style={styles.filterBtnText}>{filter}</Text>
         </Pressable>
       </View>
+      <Modal
+        visible={sortOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setSortOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setSortOpen(false)}>
+          <View style={styles.modalCard}>
+            {SORTS.map((s) => (
+              <Pressable
+                key={s.key}
+                style={styles.modalRow}
+                onPress={() => {
+                  setSort(s.key);
+                  setSortOpen(false);
+                }}
+              >
+                <Text style={styles.modalRowText}>{s.label}</Text>
+                {sort === s.key && <Text style={styles.modalCheck}>✓</Text>}
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
       <Modal
         visible={filterOpen}
         animationType="fade"
