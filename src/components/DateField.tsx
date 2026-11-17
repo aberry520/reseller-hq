@@ -1,17 +1,18 @@
 // DateField — a date input that opens a calendar instead of making the
 // user type M/D/YYYY by hand.
 //
-// - iOS: tapping the field opens a bottom-sheet modal with a full inline
-//   calendar and a Done button.
+// - iOS: the native compact date picker — it shows the date as a field,
+//   and tapping it opens the system calendar pop-up to pick a date.
+//   (The inline calendar rendered inside a custom sheet washed its dates
+//   out to nearly invisible, so the native pop-up is used instead.)
 // - Android: tapping opens the native date dialog.
 // - Web: renders the native date input inline.
 // The value is always an "M/D/YYYY" string, the format the sheet and the
 // dashboard date helpers use.
 
 import { useState } from 'react';
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatDashboardDate, parseDashboardDate } from '../lib/dashboard';
 import { colors, minTouchHeight, radius, spacing } from '../lib/ui';
 
@@ -24,7 +25,6 @@ export default function DateField({
   value: string;
   onChange: (date: string) => void;
 }) {
-  const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const date = parseDashboardDate(value) ?? new Date();
 
@@ -44,6 +44,26 @@ export default function DateField({
     );
   }
 
+  // iOS: the compact picker is itself the field — tapping it opens the
+  // system calendar pop-up. Force the light theme so the dates stay dark
+  // on the app's white background.
+  if (Platform.OS === 'ios') {
+    return (
+      <View>
+        <Text style={styles.label}>{label}</Text>
+        <View style={styles.input}>
+          <DateTimePicker
+            value={date}
+            mode="date"
+            display="compact"
+            themeVariant="light"
+            onChange={handleChange}
+          />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View>
       <Text style={styles.label}>{label}</Text>
@@ -51,40 +71,13 @@ export default function DateField({
         <Text style={styles.inputText}>{value || 'Select a date'}</Text>
         <Text style={styles.chevron}>▾</Text>
       </Pressable>
-      {Platform.OS === 'ios' ? (
-        <Modal
-          visible={open}
-          animationType="slide"
-          transparent
-          onRequestClose={() => setOpen(false)}
-        >
-          <View style={styles.sheet}>
-            <View style={[styles.sheetCard, { paddingBottom: insets.bottom + spacing.md }]}>
-              <DateTimePicker value={date} mode="date" display="inline" onChange={handleChange} />
-              <Pressable style={styles.doneBtn} onPress={() => setOpen(false)}>
-                <Text style={styles.doneText}>Done</Text>
-              </Pressable>
-            </View>
-          </View>
-        </Modal>
-      ) : (
-        open && <DateTimePicker value={date} mode="date" display="default" onChange={handleChange} />
-      )}
+      {open && <DateTimePicker value={date} mode="date" display="default" onChange={handleChange} />}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   chevron: { color: colors.muted, fontSize: 16 },
-  doneBtn: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    marginTop: spacing.md,
-    minHeight: minTouchHeight,
-    paddingVertical: spacing.md,
-  },
-  doneText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   input: {
     alignItems: 'center',
     borderColor: colors.border,
@@ -98,15 +91,4 @@ const styles = StyleSheet.create({
   },
   inputText: { color: colors.text, fontSize: 16 },
   label: { color: colors.muted, fontSize: 13, fontWeight: '600' },
-  sheet: {
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  sheetCard: {
-    backgroundColor: colors.background,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: spacing.lg,
-  },
 });
