@@ -10,6 +10,7 @@
 // and a free item is just a row whose cost (Purchase) is 0. The tab name
 // comes from Settings (syncSheet, default 'Inventory').
 
+import { Alert } from 'react-native';
 import {
   addItem,
   clearAppItems,
@@ -299,6 +300,52 @@ export async function pushItemsToSheet(items: Item[]): Promise<void> {
     assignIds: [],
     trash: [],
   });
+}
+
+// Live write-through for user edits: push items to the sheet right away
+// and, when the sheet cannot be reached, pop up once (per offline
+// episode) so Austin knows the app and the sheet are out of sync. The
+// change is already saved in the app; the regular sync still picks it
+// up later. No popup when sync is not configured — that is a setup
+// matter, not an outage.
+let offlineNoticeShown = false;
+
+function isNotConfigured(e: unknown): boolean {
+  const m = e instanceof Error ? e.message : String(e);
+  return /is not set/.test(m);
+}
+
+function isNetworkError(e: unknown): boolean {
+  if (e instanceof TypeError) return true;
+  const m = e instanceof Error ? e.message : String(e);
+  return /network request failed|failed to fetch|networkerror|offline/i.test(m);
+}
+
+export function pushItemsToSheetLive(items: Item[]): void {
+  // Deleted items are only pushed when they are known to be in the sheet;
+  // a Deleted row for an app-only item would be clutter. New/updated
+  // items are always pushed — the merge upsert adds the row when it is
+  // not there yet, so adding an item in the app adds it to the sheet.
+  const synced = new Set(getSyncState()?.ids ?? []);
+  const toPush = items.filter((it) => it.status !== 'Deleted' || synced.has(it.id));
+  if (toPush.length === 0) return;
+  pushItemsToSheet(toPush)
+    .then(() => {
+      offlineNoticeShown = false;
+    })
+    .catch((e) => {
+      if (isNotConfigured(e)) return;
+      if (offlineNoticeShown) return;
+      offlineNoticeShown = true;
+      const offline = isNetworkError(e);
+      Alert.alert(
+        offline ? "You're offline" : 'Sheet not updated',
+        offline
+          ? 'This change was saved in the app, but the sheet could not be updated because you are offline. The app and the sheet are out of sync — run a sync when you are back online and it will catch up.'
+          : `This change was saved in the app, but the sheet could not be updated (${e instanceof Error ? e.message : 'error'}). The app and the sheet are out of sync — run a sync later and it will catch up.`,
+        [{ text: 'OK' }],
+      );
+    });
 }
 
 // Replace the whole sheet tab with the app's items.

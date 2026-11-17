@@ -16,8 +16,8 @@ import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { getItem, getSettings, getSyncState, setStatus, updateItem } from '../../src/lib/db';
-import { pushItemsToSheet } from '../../src/lib/sync';
+import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
+import { pushItemsToSheetLive } from '../../src/lib/sync';
 import { cleanName } from '../../src/lib/listing';
 import {
   ebayMargin,
@@ -231,12 +231,15 @@ export default function ItemScreen() {
     // and the status in the header change on the same tap.
     setStatus(item.id, status);
     const today = new Date().toLocaleDateString('en-US');
-    setItem({
+    const next = {
       ...item,
       status,
       dateListed: status === 'Listed' ? today : item.dateListed,
       dateSold: status === 'Sold' ? today : item.dateSold,
-    });
+    };
+    setItem(next);
+    // The sheet updates right away too (and pops up if offline).
+    pushItemsToSheetLive([next]);
     setStatusNote(`✓ Marked ${status}`);
     setTimeout(() => setStatusNote(''), 3000);
   };
@@ -254,12 +257,14 @@ export default function ItemScreen() {
     const next = { ...item, purchase, estShip, soldPrice, fees, shipping, profit, revenue, profitMargin };
     updateItem(item.id, next);
     setItem(next);
+    pushItemsToSheetLive([next]);
     setCostsNote('✓ Costs saved');
     setTimeout(() => setCostsNote(''), 3000);
   };
 
   const saveLocation = () => {
     updateItem(item.id, { location });
+    pushItemsToSheetLive([{ ...item, location }]);
     Alert.alert('Saved', `Location set to "${location || '(blank)'}"`);
   };
 
@@ -275,16 +280,10 @@ export default function ItemScreen() {
           onPress: () => {
             setStatus(item.id, 'Deleted');
             router.replace('/');
-            // Push the Deleted status to the sheet right away (only when
-            // the item is known to be in the sheet — an app-only item has
-            // no sheet row to update). Best-effort: if sync is not set
-            // up or the sheet cannot be reached, the regular sync picks
-            // the Deleted item up as a changed item and App wins pushes
-            // it then.
-            const synced = new Set(getSyncState()?.ids ?? []);
-            if (synced.has(item.id)) {
-              pushItemsToSheet([{ ...item, status: 'Deleted' }]).catch(() => {});
-            }
+            // The Deleted status goes to the sheet right away too (and
+            // pops up if offline). An app-only item has no sheet row to
+            // update, so it is skipped inside pushItemsToSheetLive.
+            pushItemsToSheetLive([{ ...item, status: 'Deleted' }]);
           },
         },
       ],

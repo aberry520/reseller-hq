@@ -14,8 +14,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getAllItems, getCounts, getSyncState, setStatus } from '../../src/lib/db';
-import { pushItemsToSheet } from '../../src/lib/sync';
+import { getAllItems, getCounts, setStatus } from '../../src/lib/db';
+import { pushItemsToSheetLive } from '../../src/lib/sync';
 import { formatMoney } from '../../src/lib/pricing';
 import { parseDashboardDate } from '../../src/lib/dashboard';
 import { cleanName } from '../../src/lib/listing';
@@ -208,14 +208,12 @@ export default function InventoryScreen() {
             setItems(getAllItems());
             setCounts(getCounts());
             exitSelectMode();
-            // Push the Deleted status to the sheet right away, for the
-            // items known to be in the sheet. Best-effort — the regular
-            // sync picks up any that fail as changed items (App wins).
-            const synced = new Set(getSyncState()?.ids ?? []);
+            // The Deleted status goes to the sheet right away too (and
+            // pops up if offline).
             const toPush = items
-              .filter((it) => selected.has(it.id) && synced.has(it.id))
+              .filter((it) => selected.has(it.id))
               .map((it) => ({ ...it, status: 'Deleted' as const }));
-            if (toPush.length > 0) pushItemsToSheet(toPush).catch(() => {});
+            pushItemsToSheetLive(toPush);
           },
         },
       ],

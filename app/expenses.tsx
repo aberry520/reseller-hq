@@ -17,6 +17,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -98,26 +99,20 @@ export default function ExpensesScreen() {
     setNote('');
   };
 
-  const remove = () => {
-    if (!editingId) return;
-    const target = expenses.find((e) => e.id === editingId);
-    Alert.alert(
-      `Delete “${target?.name ?? 'this expense'}”?`,
-      'It will be removed from the app. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            deleteExpense(editingId);
-            setNote('Expense deleted.');
-            clearForm();
-            reload();
-          },
+  const removeExpense = (e: Expense) => {
+    Alert.alert(`Delete “${e.name}”?`, 'It will be removed from the app. This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          deleteExpense(e.id);
+          setNote('Expense deleted.');
+          if (editingId === e.id) clearForm();
+          reload();
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const refreshFromSheet = async () => {
@@ -221,7 +216,13 @@ export default function ExpensesScreen() {
       </Pressable>
       {editingId && (
         <View style={styles.editRow}>
-          <Pressable style={[styles.btn, styles.dangerBtn]} onPress={remove}>
+          <Pressable
+            style={[styles.btn, styles.dangerBtn]}
+            onPress={() => {
+              const e = expenses.find((x) => x.id === editingId);
+              if (e) removeExpense(e);
+            }}
+          >
             <Text style={styles.btnText}>Delete</Text>
           </Pressable>
           <Pressable style={[styles.btn, styles.secondaryBtn]} onPress={clearForm}>
@@ -232,6 +233,7 @@ export default function ExpensesScreen() {
       {!!note && <Text style={styles.note}>{note}</Text>}
 
       <Text style={styles.label}>All expenses</Text>
+      <Text style={styles.note}>Tap a row or the pencil to edit it; the trash deletes it.</Text>
       {expenses.length === 0 ? (
         <Text style={styles.empty}>No expenses yet. Add one above, or refresh from the sheet.</Text>
       ) : (
@@ -240,19 +242,32 @@ export default function ExpensesScreen() {
           keyExtractor={(e) => e.id}
           scrollEnabled={false}
           renderItem={({ item }) => (
-            <Pressable
-              style={[styles.row, editingId === item.id && styles.rowSelected]}
-              onPress={() => startEdit(item)}
-            >
-              <View style={styles.rowMain}>
+            <View style={[styles.row, editingId === item.id && styles.rowSelected]}>
+              <Pressable style={styles.rowMain} onPress={() => startEdit(item)}>
                 <Text style={styles.rowName}>{item.name}</Text>
                 <Text style={styles.rowMeta}>
                   {item.date}
                   {item.status ? ` · ${item.status}` : ''}
                 </Text>
-              </View>
+              </Pressable>
               <Text style={styles.rowPrice}>{formatMoney(item.price)}</Text>
-            </Pressable>
+              <Pressable
+                style={styles.rowAction}
+                onPress={() => startEdit(item)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel={`Edit ${item.name}`}
+              >
+                <Ionicons name="pencil-outline" size={20} color={colors.primary} />
+              </Pressable>
+              <Pressable
+                style={styles.rowAction}
+                onPress={() => removeExpense(item)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel={`Delete ${item.name}`}
+              >
+                <Ionicons name="trash-outline" size={20} color={colors.danger} />
+              </Pressable>
+            </View>
           )}
         />
       )}
@@ -309,6 +324,7 @@ const styles = StyleSheet.create({
     minHeight: 60,
     paddingVertical: spacing.sm,
   },
+  rowAction: { marginLeft: spacing.sm, padding: spacing.xs },
   rowMain: { flex: 1, marginRight: spacing.sm },
   rowMeta: { color: colors.muted, fontSize: 13, marginTop: 2 },
   rowName: { color: colors.text, fontSize: 16, fontWeight: '600' },

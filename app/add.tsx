@@ -3,6 +3,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { addItem } from '../src/lib/db';
+import { pushItemsToSheetLive } from '../src/lib/sync';
 import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
 
 export default function AddScreen() {
@@ -28,6 +29,8 @@ export default function AddScreen() {
       datePurchased: datePurchased.trim(),
       notes: notes.trim(),
     });
+    // The new item goes to the sheet right away too (and pops up if offline).
+    pushItemsToSheetLive([item]);
     router.push(`/item/${item.id}`);
   };
 
