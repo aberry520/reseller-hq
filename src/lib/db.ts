@@ -30,6 +30,7 @@ import {
   normaliseStatus,
   qrFor,
   Settings,
+  SyncSource,
 } from './types';
 
 const DB_NAME = 'reseller.db';
@@ -498,6 +499,7 @@ export function clearDeletedIds(ids: string[]): void {
 export interface SyncState {
   ids: string[]; // appIds present on both sides after the last successful apply
   at: string; // ISO timestamp of that apply
+  source?: SyncSource; // source of truth picked for the last sync run
 }
 
 export function getSyncState(): SyncState | null {
@@ -523,8 +525,8 @@ export function getSyncState(): SyncState | null {
   }
 }
 
-export function saveSyncState(ids: string[], at: string): void {
-  const value = JSON.stringify({ ids, at });
+export function saveSyncState(ids: string[], at: string, source?: SyncSource): void {
+  const value = JSON.stringify({ ids, at, source });
   if (IS_WEB) {
     webWrite(WEB_SYNC_STATE_KEY, value);
     return;
@@ -550,13 +552,19 @@ export function addItem(input: {
   place: string;
   datePurchased: string;
   notes: string;
+  // Optional fixed id (sync restores): re-creates a deleted item with its
+  // original RB-xxx so the sheet row keeps matching. Otherwise the next
+  // free RB-xxx is assigned.
+  id?: string;
 }): Item {
   const all = getAllItems();
+  const existing = input.id ? all.find((it) => it.id === input.id) : undefined;
+  if (existing) return existing;
   const maxNum = all.reduce((m, it) => {
     const n = parseInt(it.id.replace('RB-', ''), 10);
     return Number.isFinite(n) && n > m ? n : m;
   }, 0);
-  const id = `RB-${String(maxNum + 1).padStart(3, '0')}`;
+  const id = input.id ?? `RB-${String(maxNum + 1).padStart(3, '0')}`;
   const item: Item = {
     id,
     name: input.name,

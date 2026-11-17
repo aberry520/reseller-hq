@@ -1,10 +1,14 @@
-// Sheet sync — two-way, review-first (git-style).
-// "Check for changes" fetches the sheet and compares it with the app's
-// items. Nothing is written anywhere until Austin approves the diff and
-// taps Apply. App → sheet writes only the input columns (never the sheet's
-// formula columns); sheet → app imports update the app's copy of those
-// same fields. Photos stay in the app; the sheet's summary block is
-// untouched.
+// Sheet sync — two-way, review-first (git-style), driven by one choice:
+// which side is the source of truth for this run.
+//   App:    the app wins — app items go to the sheet, changed items take
+//           the app's version, items deleted in the app are marked Trash
+//           in the sheet. Sheet-only rows are left alone.
+//   Sheet:  the sheet wins — sheet rows come into the app, changed items
+//           take the sheet's version, items deleted in the app are restored
+//           from their sheet row. App-only items are left alone.
+// "Check for changes" fetches the sheet and shows what will happen under
+// the chosen source. Every actionable item starts checked and can be
+// unchecked before applying, so nothing happens without approval.
 
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -12,9 +16,17 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAllItems, getDeletedIds, getSettings, getSyncState } from '../src/lib/db';
 import { applySync, fetchSheetRows, SyncResult } from '../src/lib/sync';
-import { computeDiff, SyncDiff } from '../src/lib/sync-diff';
+import {
+  buildPlan,
+  computeDiff,
+  defaultCheckedKeys,
+  planPreview,
+  SheetRow,
+  SyncDiff,
+} from '../src/lib/sync-diff';
 import { cleanName } from '../src/lib/listing';
 import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
+import { SyncSource } from '../src/lib/types';
 
 type Phase = 'idle' | 'checking' | 'ready' | 'applying' | 'done' | 'error';
 
@@ -23,22 +35,21 @@ export default function SyncScreen() {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>('idle');
   const [diff, setDiff] = useState<SyncDiff | null>(null);
+  const [sheetRows, setSheetRows] = useState<SheetRow[]>([]);
+  const [source, setSource] = useState<SyncSource>('app');
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
   const [result, setResult] = useState<SyncResult | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [configured, setConfigured] = useState(false);
 
-  // Selections — all default to checked except "removed from sheet".
-  const [appOnlySel, setAppOnlySel] = useState<Set<string>>(new Set());
-  const [sheetOnlySel, setSheetOnlySel] = useState<Set<number>>(new Set());
-  const [changedChoice, setChangedChoice] = useState<Record<string, 'app' | 'sheet'>>({});
-  const [trashSel, setTrashSel] = useState<Set<string>>(new Set());
-
   useFocusEffect(
     useCallback(() => {
       const s = getSettings();
       setConfigured(!!s.syncUrl.trim() && !!s.syncToken.trim());
-      setLastSyncAt(getSyncState()?.at ?? null);
+      const state = getSyncState();
+      setLastSyncAt(state?.at ?? null);
+      if (state?.source) setSource(state.source);
     }, []),
   );
 
@@ -52,13 +63,11 @@ export default function SyncScreen() {
         tombstones: getDeletedIds(),
         syncedIds: getSyncState()?.ids ?? [],
       });
+      setSheetRows(rows);
       setDiff(d);
-      setAppOnlySel(new Set(d.appOnly.filter((e) => !e.wasSynced).map((e) => e.item.id)));
-      setSheetOnlySel(new Set(d.sheetOnly.map((r) => r.row)));
-      const choices: Record<string, 'app' | 'sheet'> = {};
-      for (const c of d.changed) choices[c.item.id] = 'app';
-      setChangedChoice(choices);
-      setTrashSel(new Set(d.deletedInApp));
+      const src = getSyncState()?.source ?? source;
+      setSource(src);
+      setChecked(defaultCheckedKeys(d, src));
       setPhase('ready');
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
@@ -66,11 +75,17 @@ export default function SyncScreen() {
     }
   };
 
-  const selectedCount = () => {
-    if (!diff) return 0;
-    let n = appOnlySel.size + sheetOnlySel.size + trashSel.size;
-    for (const c of diff.changed) if (changedChoice[c.item.id]) n += 1;
-    return n;
+  const switchSource = (src: SyncSource) => {
+    if (!diff) return;
+    setSource(src);
+    setChecked(defaultCheckedKeys(diff, src));
+  };
+
+  const toggle = (key: string) => {
+    const next = new Set(checked);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setChecked(next);
   };
 
   const apply = async () => {
@@ -78,17 +93,7 @@ export default function SyncScreen() {
     setPhase('applying');
     setError('');
     try {
-      const r = await applySync({
-        upsertAppIds: [
-          ...appOnlySel,
-          ...diff.changed.filter((c) => changedChoice[c.item.id] === 'app').map((c) => c.item.id),
-        ],
-        importSheetRows: diff.sheetOnly.filter((s) => sheetOnlySel.has(s.row)),
-        sheetWins: diff.changed
-          .filter((c) => changedChoice[c.item.id] === 'sheet')
-          .map((c) => ({ id: c.item.id, sheet: c.sheet })),
-        trashAppIds: [...trashSel],
-      });
+      const r = await applySync(buildPlan(diff, source, checked, sheetRows));
       setResult(r);
       setDiff(null);
       setLastSyncAt(getSyncState()?.at ?? null);
@@ -100,13 +105,6 @@ export default function SyncScreen() {
       setError(String(e instanceof Error ? e.message : e));
       setPhase('error');
     }
-  };
-
-  const toggle = <T,>(set: Set<T>, setFn: (s: Set<T>) => void, v: T) => {
-    const next = new Set(set);
-    if (next.has(v)) next.delete(v);
-    else next.add(v);
-    setFn(next);
   };
 
   const checkBox = (on: boolean) => (
@@ -139,6 +137,7 @@ export default function SyncScreen() {
     );
   }
 
+  const groups = diff ? planPreview(diff, source) : [];
   const totalChanges = diff
     ? diff.appOnly.length + diff.sheetOnly.length + diff.changed.length + diff.deletedInApp.length
     : 0;
@@ -150,8 +149,8 @@ export default function SyncScreen() {
     >
       <Text style={styles.title}>Sheet sync</Text>
       <Text style={styles.body}>
-        Compares the app with the Purchase sheet, shows what is different, and applies only what
-        you check. Nothing is written to the sheet until you tap Apply.
+        Pick which side is the source of truth, review what will happen, then apply. Nothing is
+        written until you tap Apply.
       </Text>
       {lastSyncAt ? (
         <Text style={styles.meta}>Last applied: {new Date(lastSyncAt).toLocaleString()}</Text>
@@ -178,6 +177,7 @@ export default function SyncScreen() {
           <Text style={styles.body}>Updated in sheet: {result.updatedSheet}</Text>
           <Text style={styles.body}>Added to app: {result.addedToApp}</Text>
           <Text style={styles.body}>Updated in app: {result.updatedApp}</Text>
+          <Text style={styles.body}>Restored to app: {result.restoredToApp}</Text>
           <Text style={styles.body}>Marked Trash in sheet: {result.trashedInSheet}</Text>
           {result.errors.length > 0 && (
             <Text style={styles.error}>{result.errors.slice(0, 5).join('\n')}</Text>
@@ -192,129 +192,63 @@ export default function SyncScreen() {
 
       {phase === 'ready' && diff && totalChanges > 0 && (
         <>
-          {diff.appOnly.filter((e) => !e.wasSynced).length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>New in app — will be added to the sheet</Text>
-              {diff.appOnly
-                .filter((e) => !e.wasSynced)
-                .map((e) => (
-                  <Pressable
-                    key={e.item.id}
-                    style={styles.row}
-                    onPress={() => toggle(appOnlySel, setAppOnlySel, e.item.id)}
-                  >
-                    {checkBox(appOnlySel.has(e.item.id))}
-                    <Text style={styles.rowText}>
-                      {cleanName(e.item.name)} · {e.item.id}
-                    </Text>
-                  </Pressable>
-                ))}
-            </View>
-          )}
+          <Text style={styles.sectionTitle}>Source of truth</Text>
+          <View style={styles.sourceRow}>
+            <Pressable
+              style={[styles.sourceBtn, source === 'app' && styles.sourceBtnActive]}
+              onPress={() => switchSource('app')}
+            >
+              <Text style={styles.sourceTitle}>App</Text>
+              <Text style={styles.sourceDesc}>App wins — app items go to the sheet.</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.sourceBtn, source === 'sheet' && styles.sourceBtnActive]}
+              onPress={() => switchSource('sheet')}
+            >
+              <Text style={styles.sourceTitle}>Sheet</Text>
+              <Text style={styles.sourceDesc}>Sheet wins — sheet rows come to the app.</Text>
+            </Pressable>
+          </View>
 
-          {diff.appOnly.filter((e) => e.wasSynced).length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Removed from the sheet</Text>
-              <Text style={styles.body}>
-                These were synced before, but the row is gone from the sheet. Check to add them
-                back to the sheet.
-              </Text>
-              {diff.appOnly
-                .filter((e) => e.wasSynced)
-                .map((e) => (
-                  <Pressable
-                    key={e.item.id}
-                    style={styles.row}
-                    onPress={() => toggle(appOnlySel, setAppOnlySel, e.item.id)}
-                  >
-                    {checkBox(appOnlySel.has(e.item.id))}
-                    <Text style={styles.rowText}>
-                      {cleanName(e.item.name)} · {e.item.id}
-                    </Text>
-                  </Pressable>
-                ))}
-            </View>
-          )}
-
-          {diff.sheetOnly.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>New in sheet — will be added to the app</Text>
-              {diff.sheetOnly.map((r) => (
+          {groups.map((g) => (
+            <View key={g.id} style={styles.section}>
+              <Text style={styles.sectionTitle}>{g.title}</Text>
+              {!!g.note && <Text style={styles.body}>{g.note}</Text>}
+              {g.items.map((it) => (
                 <Pressable
-                  key={r.row}
+                  key={it.key}
                   style={styles.row}
-                  onPress={() => toggle(sheetOnlySel, setSheetOnlySel, r.row)}
+                  onPress={g.actionable ? () => toggle(it.key) : undefined}
+                  disabled={!g.actionable}
                 >
-                  {checkBox(sheetOnlySel.has(r.row))}
-                  <Text style={styles.rowText}>
-                    {cleanName(r.item)} · sheet row {r.row}
-                    {r.appId ? ` · ${r.appId}` : ''}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-
-          {diff.changed.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Changed on both sides — pick the winner</Text>
-              {diff.changed.map((c) => (
-                <View key={c.item.id} style={styles.changedCard}>
-                  <Text style={styles.rowText}>
-                    {cleanName(c.item.name)} · {c.item.id}
-                  </Text>
-                  {c.diffs.map((d) => (
-                    <Text key={d.field} style={styles.diffLine}>
-                      {d.field}: {d.app} → {d.sheet}
+                  {g.actionable ? (
+                    checkBox(checked.has(it.key))
+                  ) : (
+                    <View style={styles.checkboxDisabled}>
+                      <Text style={styles.checkMarkDisabled}>–</Text>
+                    </View>
+                  )}
+                  <View style={styles.rowTextWrap}>
+                    <Text style={[styles.rowText, !g.actionable && styles.rowTextMuted]}>
+                      {cleanName(it.label)}
                     </Text>
-                  ))}
-                  <View style={styles.choiceRow}>
-                    <Pressable
-                      style={[
-                        styles.choiceBtn,
-                        changedChoice[c.item.id] === 'app' && styles.choiceBtnActive,
-                      ]}
-                      onPress={() => setChangedChoice({ ...changedChoice, [c.item.id]: 'app' })}
-                    >
-                      <Text style={styles.choiceText}>Keep app</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[
-                        styles.choiceBtn,
-                        changedChoice[c.item.id] === 'sheet' && styles.choiceBtnActive,
-                      ]}
-                      onPress={() => setChangedChoice({ ...changedChoice, [c.item.id]: 'sheet' })}
-                    >
-                      <Text style={styles.choiceText}>Keep sheet</Text>
-                    </Pressable>
+                    {!!it.sub && (
+                      <Text style={[styles.rowSub, !g.actionable && styles.rowTextMuted]}>
+                        {it.sub}
+                      </Text>
+                    )}
                   </View>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {diff.deletedInApp.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Deleted in app — will be marked Trash in sheet</Text>
-              {diff.deletedInApp.map((id) => (
-                <Pressable
-                  key={id}
-                  style={styles.row}
-                  onPress={() => toggle(trashSel, setTrashSel, id)}
-                >
-                  {checkBox(trashSel.has(id))}
-                  <Text style={styles.rowText}>{id}</Text>
                 </Pressable>
               ))}
             </View>
-          )}
+          ))}
 
           <Pressable
-            style={[styles.btn, styles.applyBtn, selectedCount() === 0 && styles.disabledBtn]}
+            style={[styles.btn, styles.applyBtn, checked.size === 0 && styles.disabledBtn]}
             onPress={apply}
-            disabled={selectedCount() === 0}
+            disabled={checked.size === 0}
           >
-            <Text style={styles.btnText}>Apply selected ({selectedCount()})</Text>
+            <Text style={styles.btnText}>Apply selected ({checked.size})</Text>
           </Pressable>
         </>
       )}
@@ -335,13 +269,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  changedCard: {
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    marginTop: spacing.sm,
-    padding: spacing.md,
-  },
   checkbox: {
     alignItems: 'center',
     borderColor: colors.border,
@@ -353,19 +280,19 @@ const styles = StyleSheet.create({
     width: 24,
   },
   checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
-  checkMark: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  choiceBtn: {
+  checkboxDisabled: {
+    alignItems: 'center',
     borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flex: 1,
-    paddingVertical: spacing.sm,
+    borderRadius: 6,
+    borderWidth: 2,
+    height: 24,
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+    width: 24,
   },
-  choiceBtnActive: { backgroundColor: colors.chip, borderColor: colors.primary },
-  choiceRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-  choiceText: { color: colors.text, fontSize: 15, fontWeight: '600', textAlign: 'center' },
+  checkMark: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  checkMarkDisabled: { color: colors.muted, fontSize: 15, fontWeight: '700' },
   container: { backgroundColor: colors.background, flex: 1 },
-  diffLine: { color: colors.muted, fontSize: 14, lineHeight: 19, marginTop: 2 },
   disabledBtn: { opacity: 0.5 },
   error: { color: '#b42318', fontSize: 15, lineHeight: 21, marginTop: spacing.md },
   meta: { color: colors.muted, fontSize: 14, marginTop: spacing.sm },
@@ -377,8 +304,22 @@ const styles = StyleSheet.create({
   },
   resultTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   row: { alignItems: 'center', flexDirection: 'row', minHeight: minTouchHeight, paddingVertical: 4 },
-  rowText: { color: colors.text, flex: 1, fontSize: 15, lineHeight: 20 },
+  rowSub: { color: colors.muted, fontSize: 13, lineHeight: 18 },
+  rowText: { color: colors.text, fontSize: 15, lineHeight: 20 },
+  rowTextMuted: { color: colors.muted },
+  rowTextWrap: { flex: 1 },
   section: { marginTop: spacing.lg },
   sectionTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  sourceBtn: {
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    flex: 1,
+    padding: spacing.md,
+  },
+  sourceBtnActive: { backgroundColor: colors.chip, borderColor: colors.primary },
+  sourceDesc: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: 2 },
+  sourceRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  sourceTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   title: { color: colors.text, fontSize: 20, fontWeight: '700' },
 });

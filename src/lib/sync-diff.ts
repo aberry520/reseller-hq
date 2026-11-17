@@ -8,7 +8,7 @@
 // piece. Nothing here writes anything.
 
 import { macBidAllIn, minEbayPrice, roundMoney, suggestedEbayPrice } from './pricing';
-import { appliesMacBidFees, Item, normaliseStatus, Settings } from './types';
+import { appliesMacBidFees, Item, normaliseStatus, Settings, SyncSource } from './types';
 
 // One row of the Purchase sheet, as the Apps Script returns it. Dates are
 // "M/d/yyyy" strings (or ""), money is numbers.
@@ -271,4 +271,216 @@ export function computeDiff(
   const deletedInApp = [...tombstones].filter((id) => byAppId.has(id));
 
   return { appOnly, sheetOnly, changed, deletedInApp };
+}
+
+// ---------------------------------------------------------------------------
+// Source of truth — one choice drives the whole sync run.
+//   'app':   the app wins. App-only items go to the sheet, changed items
+//            take the app's version, items deleted in the app are marked
+//            Trash in the sheet. Sheet-only rows are left alone (listed
+//            for awareness, not imported).
+//   'sheet': the sheet wins. Sheet-only rows come into the app, changed
+//            items take the sheet's version, items deleted in the app are
+//            restored from their sheet row (same RB-xxx). App-only items
+//            are left alone (listed for awareness, not pushed).
+// The preview shows what will happen; every actionable item starts checked
+// and can be unchecked before applying, so nothing happens without approval.
+// ---------------------------------------------------------------------------
+
+// What applySync (sync.ts) receives after Austin approves the preview.
+export interface SyncPlan {
+  source: SyncSource;
+  // App items to push to the sheet (app-truth: app-only + changed).
+  upsertAppIds: string[];
+  // Sheet rows to import as new app items (sheet-truth: sheet-only).
+  importSheetRows: SheetRow[];
+  // Changed items where the sheet wins (sheet-truth).
+  sheetWins: Array<{ id: string; sheet: SheetRow }>;
+  // Sheet rows to re-import as app items with their original id
+  // (sheet-truth: deleted in the app, still in the sheet).
+  restoreRows: SheetRow[];
+  // Tombstone ids to mark Trash in the sheet (app-truth).
+  trashAppIds: string[];
+  // App ids skipped this run (sheet-truth: app-only). They leave the
+  // synced set — the sheet no longer has them, so they are not in sync.
+  skippedAppIds: string[];
+}
+
+export interface PreviewItem {
+  key: string;
+  label: string;
+  sub?: string;
+}
+
+export interface PreviewGroup {
+  id: string;
+  title: string;
+  note?: string;
+  // False for the "left alone" groups: shown for awareness, no checkbox.
+  actionable: boolean;
+  items: PreviewItem[];
+}
+
+export const keyForAppOnly = (id: string): string => `app:${id}`;
+export const keyForChanged = (id: string): string => `chg:${id}`;
+export const keyForSheetOnly = (row: number): string => `sheet:${row}`;
+export const keyForDeleted = (id: string): string => `del:${id}`;
+
+// The groups the Sync screen shows for a diff + source of truth.
+export function planPreview(diff: SyncDiff, source: SyncSource): PreviewGroup[] {
+  const groups: PreviewGroup[] = [];
+  if (source === 'app') {
+    if (diff.appOnly.length > 0) {
+      groups.push({
+        id: 'add-to-sheet',
+        title: 'Will be added to the sheet',
+        actionable: true,
+        items: diff.appOnly.map((e) => ({
+          key: keyForAppOnly(e.item.id),
+          label: e.item.name,
+          sub: e.wasSynced ? `${e.item.id} · was in the sheet before` : e.item.id,
+        })),
+      });
+    }
+    if (diff.changed.length > 0) {
+      groups.push({
+        id: 'update-sheet',
+        title: 'Will be updated in the sheet (app wins)',
+        actionable: true,
+        items: diff.changed.map((c) => ({
+          key: keyForChanged(c.item.id),
+          label: c.item.name,
+          sub: c.diffs.map((d) => `${d.field}: ${d.app} → ${d.sheet}`).join(' · '),
+        })),
+      });
+    }
+    if (diff.deletedInApp.length > 0) {
+      groups.push({
+        id: 'trash-in-sheet',
+        title: 'Will be marked Trash in the sheet',
+        actionable: true,
+        items: diff.deletedInApp.map((id) => ({ key: keyForDeleted(id), label: id })),
+      });
+    }
+    if (diff.sheetOnly.length > 0) {
+      groups.push({
+        id: 'sheet-only-skipped',
+        title: 'In the sheet only — left alone',
+        note: 'The app is the source of truth, so these rows stay in the sheet and are not imported. Pick Sheet as the source of truth to bring them in.',
+        actionable: false,
+        items: diff.sheetOnly.map((r) => ({
+          key: keyForSheetOnly(r.row),
+          label: r.item,
+          sub: `sheet row ${r.row}`,
+        })),
+      });
+    }
+  } else {
+    if (diff.sheetOnly.length > 0) {
+      groups.push({
+        id: 'add-to-app',
+        title: 'Will be added to the app',
+        actionable: true,
+        items: diff.sheetOnly.map((r) => ({
+          key: keyForSheetOnly(r.row),
+          label: r.item,
+          sub: `sheet row ${r.row}${r.appId ? ` · ${r.appId}` : ''}`,
+        })),
+      });
+    }
+    if (diff.changed.length > 0) {
+      groups.push({
+        id: 'update-app',
+        title: 'Will be updated in the app (sheet wins)',
+        actionable: true,
+        items: diff.changed.map((c) => ({
+          key: keyForChanged(c.item.id),
+          label: c.item.name,
+          sub: c.diffs.map((d) => `${d.field}: ${d.app} → ${d.sheet}`).join(' · '),
+        })),
+      });
+    }
+    if (diff.deletedInApp.length > 0) {
+      groups.push({
+        id: 'restore-to-app',
+        title: 'Will be restored to the app',
+        note: 'These were deleted in the app but the sheet still has them. The sheet is the source of truth, so they come back with the same ID.',
+        actionable: true,
+        items: diff.deletedInApp.map((id) => ({ key: keyForDeleted(id), label: id })),
+      });
+    }
+    if (diff.appOnly.length > 0) {
+      groups.push({
+        id: 'app-only-skipped',
+        title: 'In the app only — left alone',
+        note: 'The sheet is the source of truth, so these stay in the app and are not added to the sheet. Pick App as the source of truth to push them.',
+        actionable: false,
+        items: diff.appOnly.map((e) => ({
+          key: keyForAppOnly(e.item.id),
+          label: e.item.name,
+          sub: e.wasSynced ? `${e.item.id} · was in the sheet before` : e.item.id,
+        })),
+      });
+    }
+  }
+  return groups;
+}
+
+// Every actionable item starts checked for the given source.
+export function defaultCheckedKeys(diff: SyncDiff, source: SyncSource): Set<string> {
+  const keys = new Set<string>();
+  for (const g of planPreview(diff, source)) {
+    if (!g.actionable) continue;
+    for (const it of g.items) keys.add(it.key);
+  }
+  return keys;
+}
+
+export function buildPlan(
+  diff: SyncDiff,
+  source: SyncSource,
+  checked: Set<string>,
+  sheetRows: SheetRow[],
+): SyncPlan {
+  const plan: SyncPlan = {
+    source,
+    upsertAppIds: [],
+    importSheetRows: [],
+    sheetWins: [],
+    restoreRows: [],
+    trashAppIds: [],
+    skippedAppIds: [],
+  };
+  if (source === 'app') {
+    for (const e of diff.appOnly) {
+      if (checked.has(keyForAppOnly(e.item.id))) plan.upsertAppIds.push(e.item.id);
+    }
+    for (const c of diff.changed) {
+      if (checked.has(keyForChanged(c.item.id))) plan.upsertAppIds.push(c.item.id);
+    }
+    for (const id of diff.deletedInApp) {
+      if (checked.has(keyForDeleted(id))) plan.trashAppIds.push(id);
+    }
+  } else {
+    for (const r of diff.sheetOnly) {
+      if (checked.has(keyForSheetOnly(r.row))) plan.importSheetRows.push(r);
+    }
+    for (const c of diff.changed) {
+      if (checked.has(keyForChanged(c.item.id))) {
+        plan.sheetWins.push({ id: c.item.id, sheet: c.sheet });
+      }
+    }
+    // Restores resolve from the fetched sheet rows: the tombstoned id is
+    // the sheet row's App ID, so the item comes back with its original id.
+    const byAppId = new Map(sheetRows.filter((r) => r.appId).map((r) => [r.appId, r]));
+    for (const id of diff.deletedInApp) {
+      if (!checked.has(keyForDeleted(id))) continue;
+      const row = byAppId.get(id);
+      if (row) plan.restoreRows.push(row);
+    }
+    for (const e of diff.appOnly) {
+      plan.skippedAppIds.push(e.item.id);
+    }
+  }
+  return plan;
 }

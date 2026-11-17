@@ -17,10 +17,11 @@ import {
   itemToSheetFields,
   sheetRowToPatch,
   SheetRow,
+  SyncPlan,
 } from './sync-diff';
 import { Expense, FreeItem, Item, normaliseFreeStatus } from './types';
 
-export type { SheetRow } from './sync-diff';
+export type { SheetRow, SyncPlan } from './sync-diff';
 
 export async function fetchSheetRows(): Promise<SheetRow[]> {
   const { syncUrl, syncToken } = getSettings();
@@ -79,23 +80,12 @@ async function fetchTabRows(tab: string): Promise<unknown[]> {
   return data.rows;
 }
 
-// What the Sync screen passes in after Austin approves the diff.
-export interface SyncPlan {
-  // App items to push to the sheet (new + changed where the app wins).
-  upsertAppIds: string[];
-  // Sheet rows to import as new app items.
-  importSheetRows: SheetRow[];
-  // Changed items where the sheet wins (app id → sheet row).
-  sheetWins: Array<{ id: string; sheet: SheetRow }>;
-  // Tombstone ids to mark Trash in the sheet.
-  trashAppIds: string[];
-}
-
 export interface SyncResult {
   addedToSheet: number;
   addedToApp: number;
   updatedSheet: number;
   updatedApp: number;
+  restoredToApp: number;
   trashedInSheet: number;
   errors: string[];
 }
@@ -111,6 +101,7 @@ export async function applySync(plan: SyncPlan): Promise<SyncResult> {
     addedToApp: 0,
     updatedSheet: 0,
     updatedApp: 0,
+    restoredToApp: 0,
     trashedInSheet: 0,
     errors: [],
   };
@@ -118,7 +109,9 @@ export async function applySync(plan: SyncPlan): Promise<SyncResult> {
   const allItems = getAllItems();
   const byId = new Map(allItems.map((it) => [it.id, it]));
 
-  // 1. Sheet → app: import new rows, then apply sheet-wins updates.
+  // 1. Sheet → app: import new rows, apply sheet-wins updates, and restore
+  // deleted items from their sheet row (same RB-xxx — the sheet row's App
+  // ID already matches, so no id stamp is needed for restores).
   const assignIds: Array<{ row: number; appId: string }> = [];
   for (const sheet of plan.importSheetRows) {
     try {
@@ -135,6 +128,23 @@ export async function applySync(plan: SyncPlan): Promise<SyncResult> {
       result.addedToApp++;
     } catch (e) {
       result.errors.push(`import "${sheet.item}": ${String(e)}`);
+    }
+  }
+  for (const sheet of plan.restoreRows) {
+    try {
+      const restored = addItem({
+        id: sheet.appId,
+        name: sheet.item,
+        purchase: sheet.purchase,
+        estShip: sheet.estShip,
+        place: sheet.place,
+        datePurchased: sheet.datePurchased,
+        notes: sheet.notes,
+      });
+      updateItem(restored.id, sheetRowToPatch(sheet, restored, settings));
+      result.restoredToApp++;
+    } catch (e) {
+      result.errors.push(`restore ${sheet.appId}: ${String(e)}`);
     }
   }
   for (const { id, sheet } of plan.sheetWins) {
@@ -180,16 +190,19 @@ export async function applySync(plan: SyncPlan): Promise<SyncResult> {
   result.trashedInSheet = data.trashed ?? 0;
   if (data.errors) result.errors.push(...data.errors);
 
-  // 3. Bookkeeping: clear the applied tombstones and record what is in
-  // sync now (previously synced ids, plus anything just added to the sheet
-  // or imported, minus anything just trashed).
-  clearDeletedIds(plan.trashAppIds);
+  // 3. Bookkeeping: clear the applied tombstones (trashed and restored)
+  // and record what is in sync now (previously synced ids, plus anything
+  // just added to the sheet, imported, or restored, minus anything just
+  // trashed or skipped because the sheet is the source of truth).
+  clearDeletedIds([...plan.trashAppIds, ...plan.restoreRows.map((r) => r.appId)]);
   const previous = getSyncState()?.ids ?? [];
   const nowInSync = new Set(previous);
   for (const id of plan.upsertAppIds) nowInSync.add(id);
   for (const a of assignIds) nowInSync.add(a.appId);
+  for (const r of plan.restoreRows) nowInSync.add(r.appId);
   for (const id of plan.trashAppIds) nowInSync.delete(id);
-  saveSyncState([...nowInSync], new Date().toISOString());
+  for (const id of plan.skippedAppIds) nowInSync.delete(id);
+  saveSyncState([...nowInSync], new Date().toISOString(), plan.source);
 
   return result;
 }

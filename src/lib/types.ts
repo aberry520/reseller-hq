@@ -111,6 +111,11 @@ export function appliesMacBidFees(item: Pick<Item, 'place' | 'macBidFees'>): boo
   return item.place.toLowerCase().includes('mac');
 }
 
+// Which side wins a sync run. Picked on the Sync screen each time (the
+// last pick is remembered): 'app' pushes the app's items to the sheet,
+// 'sheet' pulls the sheet's rows into the app.
+export type SyncSource = 'app' | 'sheet';
+
 export function qrFor(id: string): string {
   return `reseller://item/${id}`;
 }

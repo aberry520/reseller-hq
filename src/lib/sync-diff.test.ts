@@ -3,7 +3,14 @@
 // src/lib/sync-diff.ts). The diff is what the review screen shows, so a
 // false positive here would ask Austin to approve a change that isn't real.
 
-import { computeDiff, normalizeName, SheetRow } from './sync-diff';
+import {
+  buildPlan,
+  computeDiff,
+  defaultCheckedKeys,
+  normalizeName,
+  planPreview,
+  SheetRow,
+} from './sync-diff';
 import { DEFAULT_SETTINGS, Item } from './types';
 
 let failures = 0;
@@ -145,6 +152,108 @@ const blankStatus = computeDiff(
   { tombstones: [], syncedIds: [] },
 );
 check('blank sheet status equals Unlisted', blankStatus.changed.length === 0);
+
+// --- Source of truth -------------------------------------------------------
+// Fixture: RB-001 matches on both sides; RB-002 is app-only; RB-003 is
+// changed (sheet says Sold); RB-004 is sheet-only; RB-005 was deleted in
+// the app but its sheet row still exists.
+const srcItems = [
+  makeItem({ id: 'RB-001', name: 'Matched' }),
+  makeItem({ id: 'RB-002', name: 'App only' }),
+  makeItem({ id: 'RB-003', name: 'Changed' }),
+];
+const srcRows = [
+  makeRow({ row: 3, appId: 'RB-001', item: 'Matched' }),
+  makeRow({ row: 4, appId: 'RB-003', item: 'Changed', status: 'Sold' }),
+  makeRow({ row: 5, appId: 'RB-004', item: 'Sheet only' }),
+  makeRow({ row: 6, appId: 'RB-005', item: 'Deleted in app' }),
+];
+const srcDiff = computeDiff(srcItems, srcRows, { tombstones: ['RB-005'], syncedIds: [] });
+check(
+  'source fixture diff has all four groups',
+  srcDiff.appOnly.length === 1 &&
+    srcDiff.sheetOnly.length === 1 &&
+    srcDiff.changed.length === 1 &&
+    srcDiff.deletedInApp.length === 1,
+);
+
+// 8. App as source of truth: app items go to the sheet, changed items take
+// the app's version, the deleted item is trashed in the sheet, and the
+// sheet-only row is listed as left alone (not actionable).
+const appPreview = planPreview(srcDiff, 'app');
+check(
+  'app preview groups',
+  appPreview.map((g) => g.id).join(',') ===
+    'add-to-sheet,update-sheet,trash-in-sheet,sheet-only-skipped',
+);
+check(
+  'app preview: sheet-only group is not actionable',
+  appPreview.find((g) => g.id === 'sheet-only-skipped')?.actionable === false,
+);
+const appChecked = defaultCheckedKeys(srcDiff, 'app');
+check(
+  'app defaults: every actionable item checked',
+  appChecked.size === 3 &&
+    appChecked.has('app:RB-002') &&
+    appChecked.has('chg:RB-003') &&
+    appChecked.has('del:RB-005'),
+);
+const appPlan = buildPlan(srcDiff, 'app', appChecked, srcRows);
+check(
+  'app plan pushes app-only + changed, trashes the deleted item',
+  appPlan.upsertAppIds.join(',') === 'RB-002,RB-003' &&
+    appPlan.trashAppIds.join(',') === 'RB-005' &&
+    appPlan.importSheetRows.length === 0 &&
+    appPlan.sheetWins.length === 0 &&
+    appPlan.restoreRows.length === 0 &&
+    appPlan.skippedAppIds.length === 0,
+);
+
+// 9. Sheet as source of truth: the sheet row comes in, the changed item
+// takes the sheet's version, the deleted item is restored with its original
+// id, and the app-only item is listed as left alone (not pushed).
+const sheetPreview = planPreview(srcDiff, 'sheet');
+check(
+  'sheet preview groups',
+  sheetPreview.map((g) => g.id).join(',') ===
+    'add-to-app,update-app,restore-to-app,app-only-skipped',
+);
+check(
+  'sheet preview: app-only group is not actionable',
+  sheetPreview.find((g) => g.id === 'app-only-skipped')?.actionable === false,
+);
+const sheetChecked = defaultCheckedKeys(srcDiff, 'sheet');
+check(
+  'sheet defaults: every actionable item checked',
+  sheetChecked.size === 3 &&
+    sheetChecked.has('sheet:5') &&
+    sheetChecked.has('chg:RB-003') &&
+    sheetChecked.has('del:RB-005'),
+);
+const sheetPlan = buildPlan(srcDiff, 'sheet', sheetChecked, srcRows);
+check(
+  'sheet plan imports the sheet row and restores the deleted item',
+  sheetPlan.importSheetRows.length === 1 &&
+    sheetPlan.importSheetRows[0].appId === 'RB-004' &&
+    sheetPlan.sheetWins.length === 1 &&
+    sheetPlan.sheetWins[0].id === 'RB-003' &&
+    sheetPlan.restoreRows.length === 1 &&
+    sheetPlan.restoreRows[0].appId === 'RB-005' &&
+    sheetPlan.upsertAppIds.length === 0 &&
+    sheetPlan.trashAppIds.length === 0 &&
+    sheetPlan.skippedAppIds.join(',') === 'RB-002',
+);
+
+// 10. Unchecking one item removes it from the plan.
+const unchecked = new Set(sheetChecked);
+unchecked.delete('sheet:5');
+const uncheckedPlan = buildPlan(srcDiff, 'sheet', unchecked, srcRows);
+check(
+  'unchecked sheet row is not imported',
+  uncheckedPlan.importSheetRows.length === 0 &&
+    uncheckedPlan.sheetWins.length === 1 &&
+    uncheckedPlan.restoreRows.length === 1,
+);
 
 if (failures > 0) throw new Error(`${failures} sync-diff check(s) failed`);
 // eslint-disable-next-line no-console
