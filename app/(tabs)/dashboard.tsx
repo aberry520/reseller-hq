@@ -14,7 +14,8 @@
 // when negative) and shows the live expense count and total.
 
 import { useCallback, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -28,11 +29,13 @@ import {
   RangePreset,
   computeDashboard,
   formatDashboardDate,
+  parseDashboardDate,
   rangePreset,
   DashboardData,
 } from '../../src/lib/dashboard';
 import { fetchExpenseRows } from '../../src/lib/sync';
 import { formatMoney } from '../../src/lib/pricing';
+import DateField from '../../src/components/DateField';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 
 function money(v: number): string {
@@ -136,17 +139,19 @@ function Tile({
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
-  const [preset, setPreset] = useState<RangePreset>('thisMonth');
-  const [startText, setStartText] = useState('');
-  const [endText, setEndText] = useState('');
+  // The range is a preset (This month / Last month / Last 3 months / Year
+  // to date) or 'custom' once the start or end date is picked by hand.
+  const [preset, setPreset] = useState<RangePreset | 'custom'>('thisMonth');
+  const [startDate, setStartDate] = useState<Date>(rangePreset('thisMonth').start);
+  const [endDate, setEndDate] = useState<Date>(rangePreset('thisMonth').end);
   const [presetOpen, setPresetOpen] = useState(false);
   const [data, setData] = useState<DashboardData | null>(null);
   const [note, setNote] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
   const recompute = useCallback((start: Date, end: Date) => {
-    setStartText(formatDashboardDate(start));
-    setEndText(formatDashboardDate(end));
+    setStartDate(start);
+    setEndDate(end);
     setData(computeDashboard(getAllItems(), getExpenses(), start, end));
   }, []);
 
@@ -194,15 +199,32 @@ export default function DashboardScreen() {
     recompute(start, end);
   };
 
+  // Picking a start or end date by hand makes the range custom.
+  const onCustomStart = (dateStr: string) => {
+    const start = parseDashboardDate(dateStr);
+    if (!start || start > endDate) return;
+    setPreset('custom');
+    recompute(start, endDate);
+  };
+
+  const onCustomEnd = (dateStr: string) => {
+    const end = parseDashboardDate(dateStr);
+    if (!end || end < startDate) return;
+    setPreset('custom');
+    recompute(startDate, end);
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
     await refreshFromSheet();
-    const { start, end } = rangePreset(preset);
-    recompute(start, end);
+    recompute(startDate, endDate);
     setRefreshing(false);
   };
 
-  const presetLabel = RANGE_PRESETS.find((p) => p.key === preset)?.label ?? 'This month';
+  const presetLabel =
+    preset === 'custom'
+      ? 'Custom'
+      : (RANGE_PRESETS.find((p) => p.key === preset)?.label ?? 'This month');
 
   const moneyTone = data ? toneOf(data.moneyOnHand) : undefined;
 
@@ -210,24 +232,33 @@ export default function DashboardScreen() {
     <ScrollView
       style={styles.container}
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: insets.bottom + spacing.xl }}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       <Text style={styles.title}>Dashboard</Text>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Date range</Text>
-        <Pressable style={styles.dropdown} onPress={() => setPresetOpen(true)}>
-          <Text style={styles.dropdownText}>{presetLabel}</Text>
-          <Text style={styles.dropdownChevron}>▾</Text>
-        </Pressable>
-        <Text style={styles.note}>
-          {startText} – {endText}
-        </Text>
-        <View style={styles.chipRow}>
-          <Pressable style={[styles.chip, styles.chipPrimary]} onPress={onRefresh} disabled={refreshing}>
-            <Text style={[styles.chipText, styles.chipPrimaryText]}>
-              {refreshing ? 'Refreshing…' : 'Refresh Expenses'}
-            </Text>
+      <View style={styles.headerCard}>
+        <View style={styles.headerRow}>
+          <Pressable style={styles.dropdown} onPress={() => setPresetOpen(true)}>
+            <Text style={styles.dropdownText}>{presetLabel}</Text>
+            <Text style={styles.dropdownChevron}>▾</Text>
           </Pressable>
+          <Pressable
+            style={styles.refreshBtn}
+            onPress={onRefresh}
+            disabled={refreshing}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Refresh expenses from the sheet"
+          >
+            <Ionicons name="refresh" size={22} color={colors.primary} />
+          </Pressable>
+        </View>
+        <View style={styles.customRow}>
+          <View style={styles.customField}>
+            <DateField label="Start" value={formatDashboardDate(startDate)} onChange={onCustomStart} />
+          </View>
+          <View style={styles.customField}>
+            <DateField label="End" value={formatDashboardDate(endDate)} onChange={onCustomEnd} />
+          </View>
         </View>
         {!!note && <Text style={styles.note}>{note}</Text>}
       </View>
@@ -414,27 +445,18 @@ const styles = StyleSheet.create({
   },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   cardTitleRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, marginBottom: 4 },
-  chip: {
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  chipPrimary: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipPrimaryText: { color: '#fff' },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
-  chipText: { color: colors.text, fontSize: 14, fontWeight: '600' },
   container: { backgroundColor: colors.background, flex: 1 },
+  customField: { flex: 1 },
+  customRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
   dot: { borderRadius: 5, height: 10, width: 10 },
   dropdown: {
     alignItems: 'center',
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
+    flex: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: spacing.sm,
     minHeight: minTouchHeight,
     paddingHorizontal: spacing.md,
   },
@@ -451,6 +473,15 @@ const styles = StyleSheet.create({
   heroLabel: { color: colors.muted, fontSize: 14, fontWeight: '600' },
   heroNote: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.xs },
   heroValue: { color: colors.text, fontSize: 34, fontWeight: '800', marginTop: 2 },
+  headerCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    marginTop: spacing.md,
+    padding: spacing.md,
+  },
+  headerRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
   note: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.sm },
   option: {
     alignItems: 'center',
@@ -465,6 +496,15 @@ const styles = StyleSheet.create({
   optionCheck: { color: colors.primary, fontSize: 16, fontWeight: '700' },
   optionText: { color: colors.text, fontSize: 16 },
   optionTextActive: { color: colors.primary, fontWeight: '700' },
+  refreshBtn: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    height: minTouchHeight,
+    justifyContent: 'center',
+    width: minTouchHeight,
+  },
   sectionTitle: { color: colors.text, fontSize: 18, fontWeight: '700', marginTop: spacing.lg },
   sheet: { backgroundColor: 'rgba(0,0,0,0.4)', flex: 1, justifyContent: 'flex-end' },
   sheetCard: {
