@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Link, Tabs, useFocusEffect, useRouter } from 'expo-router';
+import { Tabs, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { deleteItem, getAllItems, getCounts } from '../../src/lib/db';
@@ -84,13 +84,27 @@ export default function InventoryScreen() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filterOpen, setFilterOpen] = useState(false);
+  // Guard against a row tap pushing the item screen more than once: a
+  // second tap while a push is in flight is ignored. Cleared whenever
+  // this screen regains focus (i.e. the user came back from the item).
+  const navGuard = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
+      navGuard.current = false;
       setItems(getAllItems());
       setCounts(getCounts());
     }, []),
   );
+
+  // Open an item once per tap. router.push (guarded) instead of Link:
+  // the Link row was pushing the item screen several times per tap,
+  // so going back took ~3 presses to reach the list again.
+  const openItem = useCallback((id: string) => {
+    if (navGuard.current) return;
+    navGuard.current = true;
+    router.push(`/item/${id}`);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -249,11 +263,9 @@ export default function InventoryScreen() {
           }
           return (
             <View style={styles.rowWrap}>
-              <Link href={`/item/${item.id}`} asChild>
-                <Pressable style={styles.row} hitSlop={{ top: 4, bottom: 4 }}>
-                  <RowContent item={item} />
-                </Pressable>
-              </Link>
+              <Pressable style={styles.row} hitSlop={{ top: 4, bottom: 4 }} onPress={() => openItem(item.id)}>
+                <RowContent item={item} />
+              </Pressable>
             </View>
           );
         }}
