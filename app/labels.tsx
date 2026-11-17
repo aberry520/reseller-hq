@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Alert, FlatList, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import QRCode from 'react-native-qrcode-svg';
 import { useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAllItems } from '../src/lib/db';
-import { labelsHtml, labelsPrintHtml, shortName, zplForItems } from '../src/lib/zpl';
+import { labelsHtml, labelsPrintFragment, shortName, zplForItems } from '../src/lib/zpl';
 import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
 import type { Item } from '../src/lib/types';
 
@@ -19,7 +20,9 @@ import type { Item } from '../src/lib/types';
  *     printer (Zebra Setup Utilities / Browser Print). Each label is a
  *     2" x 1" ZPL block with a ^BQ QR code.
  *   - Export PDF: a printable sheet of the same labels. On web this opens
- *     the browser print dialog — pick the Zebra GC420T there.
+ *     the browser's own print dialog right on this page (no new tab) —
+ *     pick the Zebra GC420T there. On the phone it makes a PDF file and
+ *     opens the share sheet so it can be saved to Files.
  * Bulk: Select All (192), Select To List (59), Clear. Labels show the
  * short name (max 24 chars, no prices) + QR + RB-xxx.
  */
@@ -98,22 +101,24 @@ export default function LabelsScreen() {
     }
     if (Platform.OS === 'web') {
       // expo-print on web just prints the current app page and ignores the
-      // HTML passed in, so open the label sheet in a new tab and print it
-      // from there — same as the old standalone label page. In the print
+      // HTML passed in, so inject the label sheet into a hidden div on this
+      // page and call the browser's own print dialog — no new tab. The
+      // injected print CSS hides the app itself while printing. In the
       // dialog pick the Zebra GC420T (2" x 1", margins None, scale 100%)
       // or "Save as PDF".
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        Alert.alert('Popup blocked', 'Allow popups for this site, then try again.');
-        return;
-      }
-      printWindow.document.write(labelsPrintHtml(chosen));
-      printWindow.document.close();
-      printWindow.focus();
+      const printRoot = document.createElement('div');
+      printRoot.id = 'reseller-print-root';
+      printRoot.innerHTML = labelsPrintFragment(chosen);
+      document.body.appendChild(printRoot);
+      const cleanup = () => {
+        printRoot.remove();
+        window.removeEventListener('afterprint', cleanup);
+      };
+      window.addEventListener('afterprint', cleanup);
       // Wait for the QR images to load so they print, with a timeout
       // fallback so a slow image never blocks printing entirely.
       await new Promise<void>((resolve) => {
-        const imgs = Array.from(printWindow.document.images);
+        const imgs = Array.from(printRoot.querySelectorAll('img'));
         if (imgs.length === 0) return resolve();
         let remaining = imgs.length;
         const oneDone = () => {
@@ -129,10 +134,23 @@ export default function LabelsScreen() {
         });
         setTimeout(resolve, 2000);
       });
-      printWindow.print();
+      window.print();
+      // Fallback cleanup in case afterprint doesn't fire.
+      setTimeout(cleanup, 10000);
       return;
     }
-    await Print.printAsync({ html: labelsHtml(chosen) });
+    // On the phone: build a PDF file and open the share sheet, so it can
+    // be saved to Files (or sent anywhere) instead of going to a printer.
+    const { uri } = await Print.printToFileAsync({ html: labelsHtml(chosen) });
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri, {
+        mimeType: 'application/pdf',
+        dialogTitle: 'Save labels PDF',
+        UTI: 'com.adobe.pdf',
+      });
+    } else {
+      Alert.alert('PDF saved', `Labels PDF written to ${uri}`);
+    }
   };
 
   return (
@@ -163,9 +181,13 @@ export default function LabelsScreen() {
       <Text style={styles.note}>
         Zebra: 2&quot; × 1&quot; labels, 203 dpi, ^BQ QR. Print one test label and scan it before a batch.
       </Text>
-      {Platform.OS === 'web' && (
+      {Platform.OS === 'web' ? (
         <Text style={styles.note}>
-          On web, Export PDF opens the labels in a new tab — in the print dialog pick the Zebra GC420T (2&quot; × 1&quot;, margins None, scale 100%) or Save as PDF.
+          On web, Export PDF opens the browser print dialog right here — pick the Zebra GC420T (2&quot; × 1&quot;, margins None, scale 100%) or Save as PDF.
+        </Text>
+      ) : (
+        <Text style={styles.note}>
+          Export PDF makes a PDF file and opens the share sheet — pick Save to Files to keep it.
         </Text>
       )}
       <FlatList

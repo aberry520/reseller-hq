@@ -80,31 +80,36 @@ export function zplForItems(items: Item[]): string {
 }
 
 /**
- * Full HTML print sheet for WEB printing (2" x 1" label per page).
- * expo-print on web just calls window.print() on the current page and
- * ignores the HTML passed in, so the app opens this in a new tab and
- * prints it from there instead. Same QR + short name + ID as the ZPL,
- * one label per page (@page 2in x 1in, margins none). In the print dialog
- * pick the Zebra GC420T (2" x 1" stock, margins None, scale 100%) or
- * "Save as PDF" for a PDF copy.
+ * Print fragment for WEB printing (2" x 1" label per page). expo-print on
+ * web just calls window.print() on the current page and ignores the HTML
+ * passed in, so the app injects this into a hidden div on the current page
+ * and calls window.print() — the browser's own print dialog opens, no new
+ * tab. The injected <style> hides everything else while printing. Same QR
+ * + short name + ID as the ZPL, one label per page (@page 2in x 1in,
+ * margins none). In the print dialog pick the Zebra GC420T (2" x 1" stock,
+ * margins None, scale 100%) or "Save as PDF" for a PDF copy.
  */
-export function labelsPrintHtml(items: Item[]): string {
+export function labelsPrintFragment(items: Item[]): string {
   const cards = items
     .map((it) => {
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(it.qrCode)}`;
       return `<div class="label"><img src="${qrUrl}" /><div class="label-text"><div class="label-name">${escapeHtml(shortName(it.name))}</div><div class="label-id">${escapeHtml(it.id)}</div></div></div>`;
     })
     .join('\n');
-  return `<!DOCTYPE html><html><head><meta charset="utf-8" /><title>Reseller HQ — Print labels</title><style>
+  return `<style>
 @page { size: 2in 1in; margin: 0; }
-html, body { margin: 0; padding: 0; background: #fff; }
+#reseller-print-root { display: none; }
+@media print {
+  body > *:not(#reseller-print-root) { display: none !important; }
+  #reseller-print-root { display: block !important; margin: 0; padding: 0; background: #fff; }
+}
 .label { width: 2in; height: 1in; margin: 0; padding: 0.05in 0.06in; box-sizing: border-box; overflow: hidden; display: flex; align-items: center; gap: 0.06in; font-family: Arial, Helvetica, sans-serif; color: #000; background: #fff; page-break-after: always; break-after: page; }
 .label:last-child { page-break-after: auto; break-after: auto; }
 .label img { width: 0.8in; height: 0.8in; flex: none; }
 .label-text { min-width: 0; flex: 1; }
 .label-name { font-size: 12pt; font-weight: bold; line-height: 1.15; overflow: hidden; overflow-wrap: break-word; }
 .label-id { font-size: 14pt; font-weight: bold; margin-top: 0.05in; }
-</style></head><body>${cards}</body></html>`;
+</style>${cards}`;
 }
 
 /** Simple HTML for expo-print: one label card per item with a QR image. */

@@ -1,1 +1,44 @@
-{"expo":{"android":{"adaptiveIcon":{"backgroundColor":"#E6F4FE","backgroundImage":"./assets/android-icon-background.png","foregroundImage":"./assets/android-icon-foreground.png","monochromeImage":"./assets/android-icon-monochrome.png"},"package":"com.austinberry.resellerhq","predictiveBackGestureEnabled":false},"icon":"./assets/icon.png","ios":{"bundleIdentifier":"com.austinberry.resellerhq","supportsTablet":true},"name":"Reseller HQ","orientation":"portrait","plugins":[["expo-camera",{"cameraPermission":"Allow Reseller HQ to scan QR codes on your inventory labels.","microphonePermission":false}],["expo-image-picker",{"photosPermission":"Allow Reseller HQ to access your photos so you can add product photos to listings."}]],"scheme":"reseller","slug":"reseller-hq","userInterfaceStyle":"light","version":"1.0.0","web":{"favicon":"./assets/favicon.png"}}}
+{
+  "expo": {
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.austinberry.resellerhq",
+      "predictiveBackGestureEnabled": false
+    },
+    "icon": "./assets/icon.png",
+    "ios": {
+      "bundleIdentifier": "com.austinberry.resellerhq",
+      "supportsTablet": true
+    },
+    "name": "Reseller HQ",
+    "orientation": "portrait",
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Reseller HQ to scan QR codes on your inventory labels.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Reseller HQ to access your photos so you can add product photos to listings."
+        }
+      ],
+      "expo-sharing"
+    ],
+    "scheme": "reseller",
+    "slug": "reseller-hq",
+    "userInterfaceStyle": "light",
+    "version": "1.0.0",
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
