@@ -129,6 +129,47 @@ check('expenses: Deleted row excluded from count', dDeleted.expenses.count, 8);
 check('expenses: Deleted row excluded from total', dDeleted.expenses.total, 752.28);
 check('expenses: Deleted row excluded from money on hand', dDeleted.moneyOnHand, 1844.2);
 
+// Deleted ITEMS are history only (kept so a delete can be undone). A
+// Deleted item must change nothing on the dashboard — not sales, not
+// costs, not Total Spent, not Money on Hand. This one is a sold Sourced
+// item bought and sold inside the range, so it would move every number
+// if it were counted.
+const deletedItem: Item = {
+  id: 'RHQ-999999',
+  name: 'Deleted test item',
+  purchase: 100,
+  estShip: 10,
+  suggestedPrice: 200,
+  minPrice: 150,
+  researchPrice: 0,
+  notes: '',
+  location: '',
+  place: 'MAC.BID',
+  datePurchased: '10/15/2026',
+  status: 'Deleted',
+  dateListed: '10/16/2026',
+  dateSold: '10/20/2026',
+  soldPrice: 200,
+  fees: 10,
+  shipping: 15,
+  profit: 75,
+  revenue: 175,
+  profitMargin: '0.375',
+  macBidFees: false,
+  qrCode: 'reseller://item/RHQ-999999',
+  photos: [],
+  whiteBgPhotos: [],
+  createdAt: '2026-11-17T00:00:00.000Z',
+};
+const dDelItem = computeDashboard([...items, deletedItem], EXPENSES_SEED_ITEMS, start, end);
+check('items: Deleted item excluded from range sales', dDelItem.range.all.numberOfSales, d.range.all.numberOfSales);
+check('items: Deleted item excluded from range total sales', dDelItem.range.all.totalSales, d.range.all.totalSales);
+check('items: Deleted item excluded from range profit', dDelItem.range.all.profit, d.range.all.profit);
+check('items: Deleted item excluded from all-time sales', dDelItem.allTime.all.numberOfSales, d.allTime.all.numberOfSales);
+check('items: Deleted item excluded from cost of goods', dDelItem.allTime.all.costOfGoods, d.allTime.all.costOfGoods);
+check('items: Deleted item excluded from total spent', dDelItem.totalSpent, d.totalSpent);
+check('items: Deleted item excluded from money on hand', dDelItem.moneyOnHand, d.moneyOnHand);
+
 if (failures > 0) throw new Error(`${failures} dashboard check(s) failed`);
 // eslint-disable-next-line no-console
 console.log('Dashboard checks done.');

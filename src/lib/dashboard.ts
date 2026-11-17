@@ -124,9 +124,14 @@ export function computeDashboard(
   start: Date,
   end: Date,
 ): DashboardData {
+  // Deleted is history only (kept in the sheet so a delete can be undone).
+  // Nothing on the dashboard counts a Deleted item — not sales, not costs,
+  // not profit, not Total Spent, not Money on Hand. Filter once, up front,
+  // so every stat below is live-only.
+  const liveItems = items.filter((it) => (it.status || '').trim() !== 'Deleted');
   // Free = cost of goods is 0; Sourced = cost > 0.
-  const sourcedItems = items.filter((it) => it.purchase > 0);
-  const freeItems = items.filter((it) => it.purchase === 0);
+  const sourcedItems = liveItems.filter((it) => it.purchase > 0);
+  const freeItems = liveItems.filter((it) => it.purchase === 0);
   // Deleted expenses do not count toward spending.
   const liveExpenses = expenses.filter((e) => (e.status || '').trim() !== 'Deleted');
   // Sold = a sold price is recorded. Date Sold decides the range.
@@ -182,11 +187,11 @@ export function computeDashboard(
   };
 
   // All time.
-  const costOfGoods = sum(items.map((it) => it.purchase));
+  const costOfGoods = sum(liveItems.map((it) => it.purchase));
   const costOfSoldGoods = sum(
-    items.filter((it) => it.dateSold.trim() !== '').map((it) => it.purchase),
+    liveItems.filter((it) => it.dateSold.trim() !== '').map((it) => it.purchase),
   );
-  const feesShippingAll = sum(items.map((it) => it.fees + it.shipping));
+  const feesShippingAll = sum(liveItems.map((it) => it.fees + it.shipping));
   const feesShippingSourced = sum(sourcedItems.map((it) => it.fees + it.shipping));
   const profitSourced = sum(soldSourced.map((it) => purchaseProfit(it)));
   const profitFree = sum(soldFree.map((it) => purchaseProfit(it)));
@@ -223,7 +228,7 @@ export function computeDashboard(
 
   // Total Spent in the range: Purchase cost by Date Purchased.
   const totalSpent = sum(
-    items
+    liveItems
       .filter((it) => inRange(parseDashboardDate(it.datePurchased), start, end))
       .map((it) => it.purchase),
   );
