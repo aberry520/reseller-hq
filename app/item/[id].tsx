@@ -13,6 +13,7 @@ import { Link, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import QRCode from 'react-native-qrcode-svg';
 import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
 import { cleanName } from '../../src/lib/listing';
@@ -81,7 +82,31 @@ export default function ItemScreen() {
       quality: 0.85,
     });
     if (result.canceled || !result.assets?.[0]) return;
-    const uri = result.assets[0].uri;
+    const asset = result.assets[0];
+    // eBay displays best with square (1:1) images: center-crop to the
+    // shortest side so every photo saved is square. If the crop ever
+    // fails, keep the original so the photo is never lost.
+    let uri = asset.uri;
+    try {
+      const side = Math.min(asset.width, asset.height);
+      const cropped = await ImageManipulator.manipulateAsync(
+        asset.uri,
+        [
+          {
+            crop: {
+              originX: Math.round((asset.width - side) / 2),
+              originY: Math.round((asset.height - side) / 2),
+              width: side,
+              height: side,
+            },
+          },
+        ],
+        { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG },
+      );
+      uri = cropped.uri;
+    } catch {
+      // fall through with the original photo
+    }
     const next = { ...item, photos: [...item.photos, uri] };
     updateItem(item.id, next);
     setItem(next);
@@ -202,6 +227,7 @@ export default function ItemScreen() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Photos ({item.photos.length})</Text>
+        <Text style={styles.note}>Photos are cropped square (1:1) for eBay.</Text>
         {item.photos.length === 0 && <Text style={styles.line}>No photos yet.</Text>}
         {item.photos.map((uri, i) => (
           <View key={uri} style={styles.photoWrap}>
