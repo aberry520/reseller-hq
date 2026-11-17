@@ -154,7 +154,7 @@ export default function LabelsScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
+    <View style={[styles.container, { paddingTop: spacing.sm }]}>
       <Text style={styles.summary}>
         {chosen.length} selected · defaults to Draft + Unlisted ({items.filter((i) => i.status === 'Draft' || i.status === 'Unlisted').length} items)
       </Text>

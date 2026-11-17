@@ -4,12 +4,14 @@ import {
   FlatList,
   Image,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { Link, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Link, Tabs, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { deleteItem, getAllItems, getCounts } from '../src/lib/db';
@@ -73,6 +75,7 @@ function RowContent({ item }: { item: Item }) {
 
 export default function InventoryScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [items, setItems] = useState<Item[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [query, setQuery] = useState('');
@@ -140,21 +143,45 @@ export default function InventoryScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
+    <>
+      <Tabs.Screen
+        options={{
+          headerRight: () => (
+            <View style={styles.headerActions}>
+              <Pressable
+                onPress={() => {
+                  if (selectMode) exitSelectMode();
+                  else {
+                    setSelected(new Set());
+                    setSelectMode(true);
+                  }
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel={selectMode ? 'Cancel selection' : 'Select items'}
+              >
+                <Ionicons
+                  name={selectMode ? 'close-outline' : 'checkbox-outline'}
+                  size={24}
+                  color={colors.text}
+                />
+              </Pressable>
+              <Pressable
+                onPress={() => router.push('/add')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel="Add item"
+              >
+                <Ionicons name="add" size={26} color={colors.text} />
+              </Pressable>
+            </View>
+          ),
+        }}
+      />
+      <View style={[styles.container, { paddingTop: spacing.sm }]}>
       <View style={styles.summary}>
-        <Text style={styles.summaryText} numberOfLines={1}>
+        <Text style={styles.summaryText}>
           {items.length} items · {toList} to list · {counts['Listed'] ?? 0} listed ·{' '}
           {counts['Sold'] ?? 0} sold
         </Text>
-        <Pressable
-          style={styles.selectBtn}
-          onPress={() => {
-            setSelected(new Set());
-            setSelectMode(true);
-          }}
-        >
-          <Text style={styles.selectBtnText}>Select</Text>
-        </Pressable>
       </View>
       <TextInput
         style={styles.search}
@@ -165,7 +192,11 @@ export default function InventoryScreen() {
         returnKeyType="search"
         clearButtonMode="while-editing"
       />
-      <View style={styles.chips}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chips}
+      >
         {FILTERS.map((f) => (
           <Pressable
             key={f}
@@ -176,7 +207,7 @@ export default function InventoryScreen() {
             <Text style={[styles.chipText, filter === f && styles.chipTextActive]}>{f}</Text>
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
       <FlatList
         data={filtered}
         keyExtractor={(it) => it.id}
@@ -208,7 +239,7 @@ export default function InventoryScreen() {
           );
         }}
       />
-      {selectMode ? (
+      {selectMode && (
         <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
           <Pressable
             style={[
@@ -228,36 +259,9 @@ export default function InventoryScreen() {
             <Text style={styles.footerBtnText}>Cancel</Text>
           </Pressable>
         </View>
-      ) : (
-        <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
-          <Link href="/scan" asChild>
-            <Pressable style={styles.footerBtn}>
-              <Text style={styles.footerBtnText}>Scan QR</Text>
-            </Pressable>
-          </Link>
-          <Link href="/add" asChild>
-            <Pressable style={styles.footerBtn}>
-              <Text style={styles.footerBtnText}>+ Add item</Text>
-            </Pressable>
-          </Link>
-          <Link href="/labels" asChild>
-            <Pressable style={styles.footerBtn}>
-              <Text style={styles.footerBtnText}>Labels</Text>
-            </Pressable>
-          </Link>
-          <Link href="/calculator" asChild>
-            <Pressable style={styles.footerBtn}>
-              <Text style={styles.footerBtnText}>Calculator</Text>
-            </Pressable>
-          </Link>
-          <Link href="/settings" asChild>
-            <Pressable style={styles.footerBtn}>
-              <Text style={styles.footerBtnText}>Settings</Text>
-            </Pressable>
-          </Link>
-        </View>
       )}
-    </View>
+      </View>
+    </>
   );
 }
 
@@ -285,7 +289,13 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.primary },
   chipText: { color: colors.text, fontSize: 14, fontWeight: '600' },
   chipTextActive: { color: '#fff' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  chips: { flexDirection: 'row', paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  headerActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginRight: spacing.sm,
+  },
   container: { backgroundColor: colors.background, flex: 1 },
   empty: { color: colors.muted, fontSize: 15, marginTop: spacing.xl, textAlign: 'center' },
   footer: {
@@ -338,15 +348,6 @@ const styles = StyleSheet.create({
   checkMark: { color: '#fff', fontSize: 16, fontWeight: '800' },
   deleteFooterBtn: { backgroundColor: colors.danger },
   disabledBtn: { opacity: 0.5 },
-  selectBtn: {
-    alignItems: 'center',
-    backgroundColor: colors.chip,
-    borderRadius: 18,
-    justifyContent: 'center',
-    minHeight: 36,
-    paddingHorizontal: spacing.md,
-  },
-  selectBtnText: { color: colors.text, fontSize: 14, fontWeight: '700' },
   rowMain: { flex: 1, marginRight: spacing.sm },
   rowMeta: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.xs },
   thumb: { borderRadius: radius.sm, height: 64, marginRight: spacing.sm, width: 64 },
@@ -373,13 +374,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  summary: {
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 10,
-  },
-  summaryText: { color: colors.text, flex: 1, fontSize: 14, fontWeight: '600', lineHeight: 20, marginRight: spacing.sm },
+  summary: { backgroundColor: colors.card, paddingHorizontal: spacing.lg, paddingVertical: 10 },
+  summaryText: { color: colors.text, fontSize: 14, fontWeight: '600', lineHeight: 20 },
 });

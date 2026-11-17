@@ -14,10 +14,10 @@ export default function ScanScreen() {
   const [message, setMessage] = useState('');
   const router = useRouter();
 
-  if (!permission) return <View style={[styles.container, { paddingTop: insets.top }]} />;
+  if (!permission) return <View style={styles.container} />;
   if (!permission.granted) {
     return (
-      <View style={[styles.center, { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.lg }]}>
+      <View style={[styles.center, { paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.lg }]}>
         <Text style={styles.text}>Camera permission is needed to scan QR labels.</Text>
         <Pressable style={styles.btn} onPress={requestPermission}>
           <Text style={styles.btnText}>Grant camera permission</Text>

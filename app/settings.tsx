@@ -31,7 +31,7 @@ export default function SettingsScreen() {
       style={styles.container}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xl },
+        { paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.xl },
       ]}
       keyboardShouldPersistTaps="handled"
     >

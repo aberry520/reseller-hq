@@ -91,7 +91,7 @@ export default function ItemScreen() {
 
   if (!item) {
     return (
-      <View style={[styles.container, styles.notFound, { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.lg }]}>
+      <View style={[styles.container, styles.notFound, { paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.lg }]}>
         <Text style={styles.notFoundText}>Item not found: {id}</Text>
       </View>
     );
@@ -285,7 +285,7 @@ export default function ItemScreen() {
       style={styles.container}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xl },
+        { paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.xl },
       ]}
       keyboardShouldPersistTaps="handled"
     >
