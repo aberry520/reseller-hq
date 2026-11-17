@@ -819,16 +819,6 @@ export function updateExpense(id: string, patch: Partial<Expense>): void {
   );
 }
 
-export function deleteExpense(id: string): void {
-  if (IS_WEB) {
-    webLoad();
-    webExpenses = (webExpenses as Expense[]).filter((e) => e.id !== id);
-    webWrite(WEB_EXPENSES_KEY, JSON.stringify(webExpenses));
-    return;
-  }
-  getDb().runSync('DELETE FROM expenses WHERE id = ?', [id]);
-}
-
 export function getSettings(): Settings {
   if (IS_WEB) {
     webLoad();

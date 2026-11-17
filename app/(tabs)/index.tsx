@@ -23,9 +23,9 @@ import { cleanName } from '../../src/lib/listing';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 import type { Item, ItemStatus } from '../../src/lib/types';
 
-type Filter = 'All' | 'To List' | 'Listed' | 'Sold' | 'Draft' | 'Trash';
+type Filter = 'All' | 'To List' | 'Listed' | 'Sold' | 'Draft' | 'Trash' | 'Deleted';
 
-const FILTERS: Filter[] = ['All', 'To List', 'Listed', 'Sold', 'Draft', 'Trash'];
+const FILTERS: Filter[] = ['All', 'To List', 'Listed', 'Sold', 'Draft', 'Trash', 'Deleted'];
 
 type Sort = 'id' | 'newest' | 'oldest' | 'name' | 'costAsc' | 'costDesc' | 'priceDesc';
 
@@ -86,6 +86,7 @@ function matchesFilter(item: Item, filter: Filter): boolean {
   if (filter === 'All') return true;
   if (filter === 'To List') return item.status === 'Draft' || item.status === 'Unlisted';
   if (filter === 'Trash') return item.status === 'Trash' || item.status === 'Trash Return';
+  if (filter === 'Deleted') return item.status === 'Deleted';
   return item.status === filter;
 }
 
@@ -158,9 +159,16 @@ export default function InventoryScreen() {
   }, []);
 
   // Deleted items are hidden from the app (they live only in the sheet
-  // until restored). Everything below — the count, the filters, the
-  // multi-select — works on the visible items only.
-  const visible = useMemo(() => items.filter((it) => it.status !== 'Deleted'), [items]);
+  // until restored) — except when the filter is set to Deleted, which is
+  // how Austin views and restores them. Everything below — the count,
+  // the filters, the multi-select — works on the visible items only.
+  const visible = useMemo(
+    () =>
+      filter === 'Deleted'
+        ? items.filter((it) => it.status === 'Deleted')
+        : items.filter((it) => it.status !== 'Deleted'),
+    [items, filter],
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -236,14 +244,14 @@ export default function InventoryScreen() {
                     setSelectMode(true);
                   }
                 }}
-                disabled={outOfSync}
+                disabled={outOfSync || filter === 'Deleted'}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 accessibilityLabel={selectMode ? 'Cancel selection' : 'Select items'}
               >
                 <Ionicons
                   name={selectMode ? 'close-outline' : 'checkbox-outline'}
                   size={24}
-                  color={outOfSync ? colors.muted : colors.text}
+                  color={outOfSync || filter === 'Deleted' ? colors.muted : colors.text}
                 />
               </Pressable>
               <Pressable

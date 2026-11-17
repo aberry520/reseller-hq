@@ -22,7 +22,6 @@ import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   addExpense,
-  deleteExpense,
   getExpenses,
   getSettings,
   replaceExpenses,
@@ -100,19 +99,23 @@ export default function ExpensesScreen() {
   };
 
   const removeExpense = (e: Expense) => {
-    Alert.alert(`Delete “${e.name}”?`, 'It will be removed from the app. This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          deleteExpense(e.id);
-          setNote('Expense deleted.');
-          if (editingId === e.id) clearForm();
-          reload();
+    Alert.alert(
+      `Delete “${e.name}”?`,
+      'It will be marked Deleted — hidden from the app, but kept in the sheet so it can be restored.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            updateExpense(e.id, { status: 'Deleted' });
+            setNote('Expense marked Deleted.');
+            if (editingId === e.id) clearForm();
+            reload();
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   const refreshFromSheet = async () => {
@@ -167,7 +170,11 @@ export default function ExpensesScreen() {
     );
   };
 
-  const total = expenses.reduce((a, e) => a + e.price, 0);
+  // Deleted expenses are hidden from the app (they live only in the
+  // sheet). The full list (including Deleted) is what "Send to sheet"
+  // writes, so the sheet keeps them as Deleted.
+  const visible = expenses.filter((e) => e.status !== 'Deleted');
+  const total = visible.reduce((a, e) => a + e.price, 0);
 
   return (
     <ScrollView
@@ -182,7 +189,7 @@ export default function ExpensesScreen() {
         <Text style={styles.totalLabel}>Total expenses</Text>
         <Text style={styles.totalValue}>{formatMoney(total)}</Text>
         <Text style={styles.totalMeta}>
-          {expenses.length} expense{expenses.length === 1 ? '' : 's'} · counted in Money on Hand
+          {visible.length} expense{visible.length === 1 ? '' : 's'} · counted in Money on Hand
         </Text>
       </View>
 
@@ -234,11 +241,11 @@ export default function ExpensesScreen() {
 
       <Text style={styles.label}>All expenses</Text>
       <Text style={styles.note}>Tap a row or the pencil to edit it; the trash deletes it.</Text>
-      {expenses.length === 0 ? (
+      {visible.length === 0 ? (
         <Text style={styles.empty}>No expenses yet. Add one above, or refresh from the sheet.</Text>
       ) : (
         <FlatList
-          data={[...expenses].sort((a, b) => a.id.localeCompare(b.id))}
+          data={[...visible].sort((a, b) => a.id.localeCompare(b.id))}
           keyExtractor={(e) => e.id}
           scrollEnabled={false}
           renderItem={({ item }) => (

@@ -124,6 +124,8 @@ export function computeDashboard(
   // Free = cost of goods is 0; Sourced = cost > 0.
   const sourcedItems = items.filter((it) => it.purchase > 0);
   const freeItems = items.filter((it) => it.purchase === 0);
+  // Deleted expenses do not count toward spending.
+  const liveExpenses = expenses.filter((e) => e.status !== 'Deleted');
   // Sold = a sold price is recorded. Date Sold decides the range.
   const soldSourced = sourcedItems.filter((it) => it.soldPrice > 0);
   const soldFree = freeItems.filter((it) => it.soldPrice > 0);
@@ -224,7 +226,7 @@ export function computeDashboard(
   );
 
   const moneyOnHand = roundMoney(
-    allTimeAll.profit - costOfGoods - sum(expenses.map((e) => e.price)),
+    allTimeAll.profit - costOfGoods - sum(liveExpenses.map((e) => e.price)),
   );
 
   return {

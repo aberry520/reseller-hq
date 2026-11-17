@@ -273,7 +273,7 @@ export default function ItemScreen() {
   const confirmDelete = () => {
     Alert.alert(
       'Remove item?',
-      `${item.name} will be marked Deleted in the app and the sheet. It will be hidden from the app, but you can restore it by changing its status in the sheet.`,
+      `${item.name} will be marked Deleted in the app and the sheet. It will be hidden from the app, but you can restore it from the Inventory filter (Deleted) or by changing its status in the sheet.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -290,6 +290,15 @@ export default function ItemScreen() {
         },
       ],
     );
+  };
+
+  // Restore a Deleted item: back to Draft (it needs a look before it is
+  // listed again), and the status goes to the sheet right away. The
+  // status chips above can pick a different status instead.
+  const restoreItem = () => {
+    setStatus(item.id, 'Draft');
+    setStatusNote('✓ Restored as Draft.');
+    pushItemsToSheetLive([{ ...item, status: 'Draft' }]);
   };
 
   return (
@@ -547,6 +556,12 @@ export default function ItemScreen() {
           </Text>
         )}
         {statusNote !== '' && <Text style={[styles.note, styles.pass]}>{statusNote}</Text>}
+        {item.status === 'Deleted' && (
+          <Text style={styles.note}>
+            This item is deleted — it is hidden from the list and kept in the sheet. Tap Restore
+            below (or any status above) to bring it back.
+          </Text>
+        )}
       </View>
 
       <Link href={`/listing/${item.id}`} asChild>
@@ -555,13 +570,23 @@ export default function ItemScreen() {
         </Pressable>
       </Link>
 
-      <Pressable
-        style={StyleSheet.flatten([styles.btn, styles.deleteBtn, outOfSync && styles.disabledBtn])}
-        onPress={confirmDelete}
-        disabled={outOfSync}
-      >
-        <Text style={styles.btnText}>Remove item</Text>
-      </Pressable>
+      {item.status === 'Deleted' ? (
+        <Pressable
+          style={StyleSheet.flatten([styles.btn, styles.restoreBtn, outOfSync && styles.disabledBtn])}
+          onPress={restoreItem}
+          disabled={outOfSync}
+        >
+          <Text style={styles.btnText}>Restore item</Text>
+        </Pressable>
+      ) : (
+        <Pressable
+          style={StyleSheet.flatten([styles.btn, styles.deleteBtn, outOfSync && styles.disabledBtn])}
+          onPress={confirmDelete}
+          disabled={outOfSync}
+        >
+          <Text style={styles.btnText}>Remove item</Text>
+        </Pressable>
+      )}
     </ScrollView>
 
     <Modal
@@ -635,6 +660,7 @@ const styles = StyleSheet.create({
   btnRow: { flexDirection: 'row', flexWrap: 'wrap' },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   deleteBtn: { backgroundColor: colors.danger, marginTop: spacing.lg },
+  restoreBtn: { backgroundColor: colors.primary, marginTop: spacing.lg },
   disabledBtn: { opacity: 0.5 },
   gateNote: { color: colors.danger, fontSize: 14, fontWeight: '600', lineHeight: 20, marginTop: spacing.sm },
   card: {
