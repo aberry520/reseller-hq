@@ -1,170 +1,290 @@
-// Reseller HQ — Google Sheets sync endpoint (Google Apps Script)
+// sheet-sync.gs — the Reseller HQ sheet sync endpoint.
+// Works with ANY reseller sheet that has the columns below (in any order).
+// A "free" item is just a row whose cost (Purchase) is 0 — there is no
+// separate Free tab; everything lives on one Inventory tab.
 //
-// WHAT IT IS
-//   A tiny web API bound to the Purchase sheet. The Reseller HQ app calls it
-//   to fetch the sheet's rows (GET) and to apply approved changes (POST).
-//   The app never talks to Google directly, so no OAuth sign-in is needed
-//   inside the app and Expo Go keeps working.
+// Setup (once):
+//   1. In your sheet: Extensions → Apps Script, paste this file.
+//   2. Project Settings → Script Properties → add SYNC_TOKEN (a long
+//      random string you make up).
+//   3. Deploy → New deployment → Web app, Execute as Me, Who has access
+//      Anyone. Copy the Web app URL.
+//   4. In the app: Settings → paste the URL + the same token, and the tab
+//      name (default "Inventory").
+// The app sends the token on every request. Keep it private — anyone with
+// the URL and the token can read and change the sheet.
 //
-// DEPLOY (Austin — one time, ~5 minutes)
-//   1. Open the tracker sheet, then Extensions → Apps Script.
-//   2. Delete the default Code.gs content and paste this whole file in.
-//   3. Set the password: in the left sidebar, Project Settings (gear) →
-//      Script Properties → Add script property:
-//        Property: SYNC_TOKEN   Value: <pick a long random string>
-//      Save it. This is the password the app sends with every request —
-//      keep it private, and use the SAME value in the app's Settings.
-//   4. Deploy → New deployment → type: Web app.
-//        Execute as: Me
-//        Who has access: Anyone
-//      Deploy, copy the Web app URL (ends in /exec).
-//   5. In Reseller HQ → Settings, paste the Web app URL into "Sheet sync URL"
-//      and the same SYNC_TOKEN value into "Sheet sync token".
+// What it does:
+//   GET  ?token=...[&tab=Name]  →  { rows: [...] } for the tab (default
+//        CONFIG.SHEET_NAME). The optional Expenses tab is read the same way
+//        (?tab=Expenses) for the dashboard.
+//   POST { token, action, ... } → one of:
+//        merge     { upserts, assignIds, trash } — the review-first sync:
+//                  update rows by App ID, stamp App IDs on imported rows,
+//                  mark deleted items Trash. (Default when no action given.)
+//        overwrite { rows } — replace the whole tab with the given rows.
+//        clear     {} — delete all data rows, keep the header.
 //
-// HOW IT WORKS
-//   - App ID lives in column W ("App ID", header row 2). Every item the app
-//     knows has an RB-xxx id; the script matches app items to sheet rows by
-//     that id, so rows can move without breaking the sync.
-//   - Only the INPUT columns are ever written: Item, Purchase, Est Ship,
-//     Research Price, Notes, Place, Date Purchased, Status, Date Listed,
-//     Date Sold, Sold Price, Fees, Shipping. The formula columns
-//     (Suggested Price, Min Price, Profit, Revenue, Profit Margin) are never
-//     touched — they keep calculating from the inputs. New rows get their
-//     formulas copied from the row above.
-//   - GET returns every data row as JSON. POST applies a batch of approved
-//     changes: upserts (update or add a row), assignIds (stamp a fresh RB-xxx
-//     onto a sheet row the app just imported), trash (set Status = Trash).
+// Columns are found by HEADER TEXT, not by letter, and the header row is
+// found by scanning the first few rows — so a sheet works as long as it has
+// the headers below, whatever row they sit on and whatever order they are
+// in. Extra columns (listing checkboxes, a summary block) are left alone.
+// The data area is the mapped columns below the header row.
 
-var SPREADSHEET_ID = '10dHhA-fFnko35JzCwTUi1H3Lj1uO2h9mXyV7u_3Qvng';
-var SHEET_NAME = 'Purchase';
+// ---------------------------------------------------------------------------
+// CONFIG — change these for your own sheet.
+// ---------------------------------------------------------------------------
+var SPREADSHEET_ID = '10wBKzvzqS4IyFIUGTI6vbfDQr2FTLn9bkpL1Mcg9Snk';
+var SHEET_NAME = 'Inventory';   // the tab with the inventory
+var APP_ID_HEADER = 'App ID';   // the column that holds the app's item id
+// The sheet's own fee/margin used by its Suggested/Min formulas (decimals).
+var SHEET_FEE_PCT = 0.13;
+var SHEET_MARGIN_PCT = 0.30;
 
-// Column numbers (1-based). App ID is column W, past the summary block S-V.
-var COL = {
-  item: 1, purchase: 2, estShip: 3,
-  // 4 Suggested Price, 5 Min Price — formulas, never written.
-  researchPrice: 6, notes: 7, place: 8, datePurchased: 9, status: 10,
-  dateListed: 11, dateSold: 12, soldPrice: 13, fees: 14, shipping: 15,
-  // 16 Profit, 17 Revenue, 18 Profit Margin — formulas, never written.
-  appId: 23
+// Header → field. If your sheet uses different header names, rename them
+// here (the field names on the right are what the app expects). Headers
+// your sheet does not have are simply skipped — the app treats them as
+// blank/0 — so a sheet only needs the required ones to work.
+var FIELD_BY_HEADER = {
+  'Item': 'item',
+  'Purchase': 'purchase',
+  'Est Ship': 'estShip',
+  'Research Price': 'researchPrice',
+  'Notes': 'notes',
+  'Location': 'location',
+  'Place of Purchase': 'place',
+  'Date Purchased': 'datePurchased',
+  'Status': 'status',
+  'Date Listed': 'dateListed',
+  'Date Sold': 'dateSold',
+  'Sold Price': 'soldPrice',
+  'Fees': 'fees',
+  'Shipping': 'shipping'
 };
-var FORMULA_COLS = [4, 5, 16, 17, 18];
-var HEADER_ROW = 2; // Row 1 is the summary row; row 2 is the header.
+// Headers that hold formulas — read but never written by the app. The
+// script fills them in for new rows (see formulaFor_).
+var FORMULA_BY_HEADER = {
+  'Suggested Price': 'suggested',
+  'Min Price': 'min',
+  'Profit': 'profit',
+  'Revenue': 'revenue',
+  'Profit Mrgin': 'margin',
+  'Profit Margin': 'margin'
+};
+// The sync needs at least these headers to work.
+var REQUIRED_HEADERS = ['Item', 'Purchase', 'Status'];
 
-function getToken_() {
-  return PropertiesService.getScriptProperties().getProperty('SYNC_TOKEN') || '';
-}
+// The Expenses tab (optional, for the dashboard): header → field.
+var EXPENSES_BY_HEADER = {
+  'Item': 'name',
+  'Price': 'price',
+  'Date': 'date',
+  'Status': 'status'
+};
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 function json_(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(
+    ContentService.MimeType.JSON,
+  );
 }
 
 function checkToken_(token) {
-  var expected = getToken_();
-  if (!expected) return 'sync token not set (add SYNC_TOKEN in Script Properties)';
-  if (!token || token !== expected) return 'bad token';
+  if (!token) return 'missing token';
+  var expected = PropertiesService.getScriptProperties().getProperty('SYNC_TOKEN');
+  if (!expected) return 'SYNC_TOKEN is not set (Script Properties)';
+  if (token !== expected) return 'bad token';
   return null;
-}
-
-function parseDate_(v) {
-  if (!v) return null;
-  if (Object.prototype.toString.call(v) === '[object Date]') return v;
-  var m = String(v).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m) return new Date(parseInt(m[3], 10), parseInt(m[1], 10) - 1, parseInt(m[2], 10));
-  return null;
-}
-
-function fmtDate_(v) {
-  var d = parseDate_(v);
-  if (!d || isNaN(d.getTime())) return '';
-  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'M/d/yyyy');
-}
-
-function num_(v) {
-  if (v === '' || v === null || v === undefined) return 0;
-  var n = Number(v);
-  return isNaN(n) ? 0 : n;
 }
 
 function str_(v) {
-  if (v === null || v === undefined) return '';
-  return String(v);
+  return v === null || v === undefined ? '' : String(v);
 }
 
-// GET ?token=...[&tab=Free|Expenses]  →  { rows: [...] }
-//   tab=Purchase (default): every data row of the Purchase tab.
-//   tab=Free: every data row of the Free tab (free inventory).
-//   tab=Expenses: every data row of the Expenses tab.
-// The app uses the Free/Expenses reads to refresh the dashboard's local
-// copies — the sheet is the source of truth for those two lists.
-function doGet(e) {
-  try {
-    var err = checkToken_(e.parameter.token);
-    if (err) return json_({ error: err });
-    var tab = e.parameter.tab || 'Purchase';
-    if (tab === 'Free') return json_({ rows: readFree_() });
-    if (tab === 'Expenses') return json_({ rows: readExpenses_() });
-    return json_({ rows: readPurchase_() });
-  } catch (ex) {
-    return json_({ error: String(ex) });
+function num_(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  if (typeof v === 'number') return v;
+  var n = parseFloat(String(v).replace(/[$,%\s]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+function fmtDate_(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'M/d/yyyy');
   }
+  return str_(v);
 }
 
-function readPurchase_() {
-    var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
-    var lastRow = sheet.getLastRow();
-    var rows = [];
-    if (lastRow > HEADER_ROW) {
-      var values = sheet.getRange(HEADER_ROW + 1, 1, lastRow - HEADER_ROW, COL.appId).getValues();
-      for (var i = 0; i < values.length; i++) {
-        var r = values[i];
-        var item = str_(r[COL.item - 1]).trim();
-        var appId = str_(r[COL.appId - 1]).trim();
-        if (!item && !appId) continue; // skip blank rows
-        rows.push({
-          appId: appId,
-          row: HEADER_ROW + 1 + i,
-          item: item,
-          purchase: num_(r[COL.purchase - 1]),
-          estShip: num_(r[COL.estShip - 1]),
-          researchPrice: num_(r[COL.researchPrice - 1]),
-          notes: str_(r[COL.notes - 1]),
-          place: str_(r[COL.place - 1]),
-          datePurchased: fmtDate_(r[COL.datePurchased - 1]),
-          status: str_(r[COL.status - 1]),
-          dateListed: fmtDate_(r[COL.dateListed - 1]),
-          dateSold: fmtDate_(r[COL.dateSold - 1]),
-          soldPrice: num_(r[COL.soldPrice - 1]),
-          fees: num_(r[COL.fees - 1]),
-          shipping: num_(r[COL.shipping - 1])
-        });
+// "M/d/yyyy" (or "M/d/yy") → a real Date, or null.
+function parseDate_(s) {
+  var m = str_(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+  if (!m) return null;
+  var y = parseInt(m[3], 10);
+  if (y < 100) y += 2000;
+  return new Date(y, parseInt(m[1], 10) - 1, parseInt(m[2], 10));
+}
+
+function colLetter_(n) {
+  var s = '';
+  while (n > 0) {
+    var r = (n - 1) % 26;
+    s = String.fromCharCode(65 + r) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+function tabNames_() {
+  return SpreadsheetApp.openById(SPREADSHEET_ID)
+    .getSheets()
+    .map(function (s) {
+      return s.getName();
+    });
+}
+
+// Find the header row: the first row (of the first 5) containing all the
+// required headers. Returns { cols, formulas, headerRow, found } where cols
+// maps field → column (1-based) for every known header present, formulas
+// maps formula kind → column, and found lists the header names seen.
+// Throws a clear error naming the missing headers when no header row is
+// found, so a sheet with different header names fails loudly instead of
+// silently syncing the wrong columns.
+function colMap_(sheet, fieldByHeader, requiredHeaders) {
+  var lastCol = sheet.getLastColumn();
+  var headerRow = 0;
+  var headers = null;
+  for (var r = 1; r <= 5; r++) {
+    var rowVals = sheet.getRange(r, 1, 1, lastCol).getValues()[0];
+    var names = rowVals.map(function (v) {
+      return str_(v).trim();
+    });
+    var ok = true;
+    for (var i = 0; i < requiredHeaders.length; i++) {
+      if (names.indexOf(requiredHeaders[i]) === -1) {
+        ok = false;
+        break;
       }
     }
-    return rows;
+    if (ok) {
+      headerRow = r;
+      headers = names;
+      break;
+    }
+  }
+  if (!headerRow) {
+    throw new Error(
+      'No header row found in tab "' + sheet.getName() + '" (looked in rows 1-5). ' +
+      'Required headers: ' + requiredHeaders.join(', ') +
+      '. Rename the headers in the sheet or in FIELD_BY_HEADER at the top of this script.',
+    );
+  }
+  var cols = {};
+  var formulas = {};
+  var found = [];
+  for (var c = 0; c < headers.length; c++) {
+    var h = headers[c];
+    if (!h) continue;
+    found.push(h);
+    if (fieldByHeader[h]) cols[fieldByHeader[h]] = c + 1;
+    if (FORMULA_BY_HEADER[h]) formulas[FORMULA_BY_HEADER[h]] = c + 1;
+    if (h === APP_ID_HEADER) cols.appId = c + 1;
+  }
+  return { cols: cols, formulas: formulas, headerRow: headerRow, found: found };
 }
 
-function readFree_() {
-  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Free');
+function openTab_(name) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    throw new Error(
+      'Tab "' + name + '" not found. Tabs in this sheet: ' + tabNames_().join(', ') + '.',
+    );
+  }
+  return sheet;
+}
+
+// The last data row: the last non-empty cell in the Item column (below the
+// header). Using the Item column — not getLastRow() — so a summary block in
+// other columns never moves the append point.
+function lastDataRow_(sheet, itemCol, headerRow) {
   var lastRow = sheet.getLastRow();
+  if (lastRow <= headerRow) return headerRow;
+  var values = sheet.getRange(headerRow + 1, itemCol, lastRow - headerRow, 1).getValues();
+  for (var i = values.length - 1; i >= 0; i--) {
+    if (str_(values[i][0]).trim() !== '') return headerRow + 1 + i;
+  }
+  return headerRow;
+}
+
+// The formula for a formula column on a given row, built from the actual
+// column letters (so it works whatever order the columns are in). Returns
+// null when the columns a formula needs are not in the sheet. The margin
+// formula is built by writeRow_, which knows the Profit column.
+function formulaFor_(kind, row, cols) {
+  function L(field) {
+    return cols[field] ? colLetter_(cols[field]) + row : null;
+  }
+  var purchase = L('purchase');
+  var estShip = L('estShip');
+  var sold = L('soldPrice');
+  var fees = L('fees');
+  var shipping = L('shipping');
+  if (kind === 'suggested') {
+    if (!purchase || !estShip) return null;
+    var denom = (1 - SHEET_FEE_PCT - SHEET_MARGIN_PCT).toFixed(2);
+    return '=(' + purchase + '+' + estShip + ')/' + denom;
+  }
+  if (kind === 'min') {
+    if (!purchase || !estShip) return null;
+    var denomMin = (1 - SHEET_FEE_PCT).toFixed(2);
+    return '=(' + purchase + '+' + estShip + ')/' + denomMin;
+  }
+  if (kind === 'profit') {
+    if (!sold || !purchase || !fees || !shipping) return null;
+    return '=IF(' + sold + '<>"", ' + sold + '-' + purchase + '-' + fees + '-' + shipping + ', "")';
+  }
+  if (kind === 'revenue') {
+    if (!sold || !fees || !shipping) return null;
+    return '=IF(' + sold + '<>"", ' + sold + '-' + fees + '-' + shipping + ', "")';
+  }
+  return null;
+}
+
+// Read every data row of a tab as named objects.
+function readInventory_(tabName) {
+  var sheet = openTab_(tabName);
+  var map = colMap_(sheet, FIELD_BY_HEADER, REQUIRED_HEADERS);
+  var cols = map.cols;
+  var headerRow = map.headerRow;
+  var lastRow = lastDataRow_(sheet, cols.item, headerRow);
   var rows = [];
-  if (lastRow > HEADER_ROW) {
-    var values = sheet.getRange(HEADER_ROW + 1, 1, lastRow - HEADER_ROW, 9).getValues();
+  if (lastRow > headerRow) {
+    var maxCol = Math.max.apply(null, Object.values(cols));
+    var values = sheet.getRange(headerRow + 1, 1, lastRow - headerRow, maxCol).getValues();
     for (var i = 0; i < values.length; i++) {
       var r = values[i];
-      var item = str_(r[0]).trim();
-      if (!item) continue;
+      var item = str_(r[cols.item - 1]).trim();
+      var appId = cols.appId ? str_(r[cols.appId - 1]).trim() : '';
+      if (!item && !appId) continue; // skip blank rows
       rows.push({
-        row: HEADER_ROW + 1 + i,
-        name: item,
-        box: str_(r[1]),
-        recPrice: num_(r[2]),
-        status: str_(r[3]),
-        dateListed: fmtDate_(r[4]),
-        dateSold: fmtDate_(r[5]),
-        soldPrice: num_(r[6]),
-        fees: num_(r[7]),
-        shipping: num_(r[8])
+        appId: appId,
+        row: headerRow + 1 + i,
+        item: item,
+        purchase: num_(r[cols.purchase - 1]),
+        estShip: cols.estShip ? num_(r[cols.estShip - 1]) : 0,
+        researchPrice: cols.researchPrice ? num_(r[cols.researchPrice - 1]) : 0,
+        notes: cols.notes ? str_(r[cols.notes - 1]) : '',
+        location: cols.location ? str_(r[cols.location - 1]) : '',
+        place: cols.place ? str_(r[cols.place - 1]) : '',
+        datePurchased: cols.datePurchased ? fmtDate_(r[cols.datePurchased - 1]) : '',
+        status: str_(r[cols.status - 1]),
+        dateListed: cols.dateListed ? fmtDate_(r[cols.dateListed - 1]) : '',
+        dateSold: cols.dateSold ? fmtDate_(r[cols.dateSold - 1]) : '',
+        soldPrice: cols.soldPrice ? num_(r[cols.soldPrice - 1]) : 0,
+        fees: cols.fees ? num_(r[cols.fees - 1]) : 0,
+        shipping: cols.shipping ? num_(r[cols.shipping - 1]) : 0
       });
     }
   }
@@ -172,124 +292,217 @@ function readFree_() {
 }
 
 function readExpenses_() {
-  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Expenses');
-  var lastRow = sheet.getLastRow();
+  var sheet = openTab_('Expenses');
+  var map = colMap_(sheet, EXPENSES_BY_HEADER, ['Item', 'Price']);
+  var cols = map.cols;
+  var headerRow = map.headerRow;
+  var lastRow = lastDataRow_(sheet, cols.name, headerRow);
   var rows = [];
-  if (lastRow > HEADER_ROW) {
-    var values = sheet.getRange(HEADER_ROW + 1, 1, lastRow - HEADER_ROW, 4).getValues();
+  if (lastRow > headerRow) {
+    var maxCol = Math.max.apply(null, Object.values(cols));
+    var values = sheet.getRange(headerRow + 1, 1, lastRow - headerRow, maxCol).getValues();
     for (var i = 0; i < values.length; i++) {
       var r = values[i];
-      var name = str_(r[0]).trim();
+      var name = str_(r[cols.name - 1]).trim();
       if (!name) continue;
       rows.push({
-        row: HEADER_ROW + 1 + i,
+        row: headerRow + 1 + i,
         name: name,
-        price: num_(r[1]),
-        date: fmtDate_(r[2]),
-        status: str_(r[3])
+        price: num_(r[cols.price - 1]),
+        date: cols.date ? fmtDate_(r[cols.date - 1]) : '',
+        status: cols.status ? str_(r[cols.status - 1]) : ''
       });
     }
   }
   return rows;
 }
 
-// POST { token, upserts: [{ appId, fields }], assignIds: [{ row, appId }],
-//        trash: [appId] }
-//   upserts: update the row with this appId (input columns only), or append
-//     a new row if the appId is not in the sheet yet.
-//   assignIds: stamp a fresh appId onto an existing sheet row.
-//   trash: set Status = "Trash" on the row with this appId.
-// Returns { ok: true, upserted, added, assigned, trashed, errors: [] }.
+// Clear the data area: every mapped column below the header row. Other
+// columns (listing checkboxes, a summary block) are left alone.
+function clearData_(sheet, map) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= map.headerRow) return 0;
+  var allCols = Object.values(map.cols).concat(Object.values(map.formulas));
+  for (var i = 0; i < allCols.length; i++) {
+    sheet.getRange(map.headerRow + 1, allCols[i], lastRow - map.headerRow, 1).clearContent();
+  }
+  return lastRow - map.headerRow;
+}
+
+// Write one inventory row (input columns + formula columns + App ID).
+// `fields` uses the app's field names; dates arrive as "M/d/yyyy" strings.
+function writeRow_(sheet, row, appId, fields, map) {
+  var cols = map.cols;
+  var formulas = map.formulas;
+  function set(field, value) {
+    if (cols[field]) sheet.getRange(row, cols[field]).setValue(value);
+  }
+  set('item', fields.item || '');
+  set('purchase', num_(fields.purchase));
+  set('estShip', num_(fields.estShip));
+  set('researchPrice', num_(fields.researchPrice));
+  set('notes', fields.notes || '');
+  set('location', fields.location || '');
+  set('place', fields.place || '');
+  set('datePurchased', parseDate_(fields.datePurchased));
+  set('status', fields.status || '');
+  set('dateListed', parseDate_(fields.dateListed));
+  set('dateSold', parseDate_(fields.dateSold));
+  set('soldPrice', num_(fields.soldPrice));
+  set('fees', num_(fields.fees));
+  set('shipping', num_(fields.shipping));
+  if (cols.appId) sheet.getRange(row, cols.appId).setValue(appId || '');
+  // Formula columns, built from the actual column letters.
+  for (var kind in formulas) {
+    var f = null;
+    if (kind === 'margin') {
+      // Profit margin = Profit / Sold Price. The Profit column is the
+      // formula column found under the 'Profit' header (formulas.profit).
+      var profitCol = formulas.profit;
+      var soldCol = cols.soldPrice ? colLetter_(cols.soldPrice) + row : null;
+      if (profitCol && soldCol) {
+        var pL = colLetter_(profitCol) + row;
+        f = '=IF(AND(' + pL + '<>"",' + soldCol + '<>""),' + pL + '/' + soldCol + ',"")';
+      }
+    } else {
+      f = formulaFor_(kind, row, cols);
+    }
+    if (f) sheet.getRange(row, formulas[kind]).setFormula(f);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GET ?token=...[&tab=Name]  →  { rows: [...] }
+//   tab defaults to CONFIG.SHEET_NAME ("Inventory"). ?tab=Expenses reads the
+//   Expenses tab for the dashboard.
+// ---------------------------------------------------------------------------
+function doGet(e) {
+  try {
+    var err = checkToken_(e.parameter.token);
+    if (err) return json_({ error: err });
+    var tab = e.parameter.tab || SHEET_NAME;
+    if (tab === 'Expenses') return json_({ rows: readExpenses_() });
+    return json_({ rows: readInventory_(tab) });
+  } catch (ex) {
+    return json_({ error: String(ex) });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// POST { token, action, ... }
+//   merge     { upserts: [{appId, fields}], assignIds: [{row, appId}],
+//               trash: [appId] } — update by App ID, stamp ids, Trash deletes.
+//   overwrite { rows: [{appId, fields}] } — replace the whole tab.
+//   clear     {} — delete all data rows, keep the header.
+// ---------------------------------------------------------------------------
 function doPost(e) {
   var lock = LockService.getScriptLock();
   try {
-    lock.tryLock(10000);
+    lock.waitLock(15000);
     var body = JSON.parse(e.postData.contents);
     var err = checkToken_(body.token);
     if (err) return json_({ error: err });
+    var action = body.action || 'merge';
+    var tab = body.tab || SHEET_NAME;
+    var sheet = openTab_(tab);
+    var map = colMap_(sheet, FIELD_BY_HEADER, REQUIRED_HEADERS);
+    var cols = map.cols;
+    var headerRow = map.headerRow;
 
-    var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
-    var result = { ok: true, upserted: 0, added: 0, assigned: 0, trashed: 0, errors: [] };
+    if (action === 'clear') {
+      var cleared = clearData_(sheet, map);
+      return json_({ ok: true, cleared: cleared });
+    }
 
-    // Index rows by appId (column W).
-    var lastRow = sheet.getLastRow();
-    var idToRow = {};
-    if (lastRow > HEADER_ROW) {
-      var ids = sheet.getRange(HEADER_ROW + 1, COL.appId, lastRow - HEADER_ROW, 1).getValues();
-      for (var i = 0; i < ids.length; i++) {
-        var id = str_(ids[i][0]).trim();
-        if (id) idToRow[id] = HEADER_ROW + 1 + i;
+    if (action === 'overwrite') {
+      clearData_(sheet, map);
+      var rows = body.rows || [];
+      var written = 0;
+      var errors = [];
+      for (var i = 0; i < rows.length; i++) {
+        try {
+          writeRow_(sheet, headerRow + 1 + i, rows[i].appId, rows[i].fields || {}, map);
+          written++;
+        } catch (ex) {
+          errors.push('row ' + (i + 1) + ': ' + String(ex));
+        }
+      }
+      return json_({ ok: true, written: written, errors: errors });
+    }
+
+    // merge (default): upserts by App ID, id stamps, trashes.
+    var upserts = body.upserts || [];
+    var assignIds = body.assignIds || [];
+    var trash = body.trash || [];
+    var lastRow = lastDataRow_(sheet, cols.item, headerRow);
+    var byAppId = {};
+    if (cols.appId && lastRow > headerRow) {
+      var idValues = sheet
+        .getRange(headerRow + 1, cols.appId, lastRow - headerRow, 1)
+        .getValues();
+      for (var i = 0; i < idValues.length; i++) {
+        var id = str_(idValues[i][0]).trim();
+        if (id) byAppId[id] = headerRow + 1 + i;
       }
     }
-
-    function writeInputCells_(row, f) {
-      // A:C — Item, Purchase, Est Ship.
-      sheet.getRange(row, COL.item, 1, 3).setValues([[
-        str_(f.item), num_(f.purchase), num_(f.estShip)
-      ]]);
-      // F:O — Research Price … Shipping (dates converted to real dates).
-      sheet.getRange(row, COL.researchPrice, 1, 10).setValues([[
-        num_(f.researchPrice), str_(f.notes), str_(f.place),
-        parseDate_(f.datePurchased) || '', str_(f.status),
-        parseDate_(f.dateListed) || '', parseDate_(f.dateSold) || '',
-        num_(f.soldPrice), num_(f.fees), num_(f.shipping)
-      ]]);
-    }
-
-    function copyFormulas_(fromRow, toRow) {
-      for (var k = 0; k < FORMULA_COLS.length; k++) {
-        var c = FORMULA_COLS[k];
-        sheet.getRange(fromRow, c, 1, 1).copyTo(sheet.getRange(toRow, c, 1, 1));
-      }
-    }
-
-    (body.upserts || []).forEach(function (u) {
+    var upserted = 0;
+    var added = 0;
+    var errors = [];
+    var nextRow = lastRow + 1;
+    for (var u = 0; u < upserts.length; u++) {
+      var appId = upserts[u].appId;
+      var fields = upserts[u].fields || {};
+      var row = byAppId[appId];
       try {
-        var appId = str_(u.appId).trim();
-        if (!appId) { result.errors.push('upsert without appId'); return; }
-        var row = idToRow[appId];
         if (row) {
-          writeInputCells_(row, u.fields || {});
-          result.upserted++;
+          writeRow_(sheet, row, appId, fields, map);
+          upserted++;
         } else {
-          var newRow = sheet.getLastRow() + 1;
-          writeInputCells_(newRow, u.fields || {});
-          sheet.getRange(newRow, COL.appId, 1, 1).setValue(appId);
-          if (newRow > HEADER_ROW + 1) copyFormulas_(newRow - 1, newRow);
-          idToRow[appId] = newRow;
-          result.added++;
+          writeRow_(sheet, nextRow, appId, fields, map);
+          byAppId[appId] = nextRow;
+          nextRow++;
+          added++;
         }
-      } catch (ex2) {
-        result.errors.push('upsert ' + (u.appId || '?') + ': ' + String(ex2));
+      } catch (ex) {
+        errors.push(appId + ': ' + String(ex));
       }
-    });
-
-    (body.assignIds || []).forEach(function (a) {
+    }
+    var assigned = 0;
+    for (var a = 0; a < assignIds.length; a++) {
       try {
-        sheet.getRange(a.row, COL.appId, 1, 1).setValue(str_(a.appId).trim());
-        result.assigned++;
-      } catch (ex3) {
-        result.errors.push('assignId row ' + a.row + ': ' + String(ex3));
-      }
-    });
-
-    (body.trash || []).forEach(function (appId) {
-      try {
-        var row = idToRow[str_(appId).trim()];
-        if (row) {
-          sheet.getRange(row, COL.status, 1, 1).setValue('Trash');
-          result.trashed++;
+        if (cols.appId) {
+          sheet.getRange(assignIds[a].row, cols.appId).setValue(assignIds[a].appId);
+          assigned++;
         }
-      } catch (ex4) {
-        result.errors.push('trash ' + appId + ': ' + String(ex4));
+      } catch (ex) {
+        errors.push('assign ' + assignIds[a].appId + ': ' + String(ex));
       }
+    }
+    var trashed = 0;
+    for (var t = 0; t < trash.length; t++) {
+      try {
+        var tRow = byAppId[trash[t]];
+        if (tRow && cols.status) {
+          sheet.getRange(tRow, cols.status).setValue('Trash');
+          trashed++;
+        }
+      } catch (ex) {
+        errors.push('trash ' + trash[t] + ': ' + String(ex));
+      }
+    }
+    return json_({
+      ok: true,
+      upserted: upserted,
+      added: added,
+      assigned: assigned,
+      trashed: trashed,
+      errors: errors
     });
-
-    SpreadsheetApp.flush();
-    return json_(result);
   } catch (ex) {
     return json_({ error: String(ex) });
   } finally {
-    try { lock.releaseLock(); } catch (ignore) {}
+    try {
+      lock.releaseLock();
+    } catch (e) {}
   }
 }

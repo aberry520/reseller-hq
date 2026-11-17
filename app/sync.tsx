@@ -14,8 +14,15 @@ import { useCallback, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getAllItems, getDeletedIds, getSettings, getSyncState } from '../src/lib/db';
-import { applySync, fetchSheetRows, SyncResult } from '../src/lib/sync';
+import { getAllItems, getDeletedIds, getSettings, getSyncState, clearLocalData } from '../src/lib/db';
+import {
+  applySync,
+  clearSheetOnServer,
+  fetchSheetRows,
+  overwriteAppFromSheet,
+  overwriteSheetFromApp,
+  SyncResult,
+} from '../src/lib/sync';
 import {
   buildPlan,
   computeDiff,
@@ -42,6 +49,8 @@ export default function SyncScreen() {
   const [result, setResult] = useState<SyncResult | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [configured, setConfigured] = useState(false);
+  const [freshNote, setFreshNote] = useState('');
+  const [freshBusy, setFreshBusy] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -112,6 +121,84 @@ export default function SyncScreen() {
       {on && <Text style={styles.checkMark}>✓</Text>}
     </View>
   );
+
+  // --- Start fresh: overwrite one side from the other, or clear a side. ---
+  // Each one asks for confirmation first. After one runs, the merge diff
+  // above is stale, so it is reset — tap "Check for changes" to re-check.
+  const resetAfterFresh = () => {
+    setDiff(null);
+    setPhase('idle');
+    setLastSyncAt(getSyncState()?.at ?? null);
+  };
+
+  const runFresh = async (
+    title: string,
+    message: string,
+    run: () => Promise<{ count: number; errors: string[] }>,
+    done: (r: { count: number; errors: string[] }) => string,
+  ) => {
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Do it',
+        style: 'destructive',
+        onPress: async () => {
+          setFreshBusy(true);
+          setFreshNote('');
+          try {
+            const r = await run();
+            setFreshNote(done(r) + (r.errors.length > 0 ? ` Errors: ${r.errors.slice(0, 3).join('; ')}` : ''));
+          } catch (e) {
+            setFreshNote(`Failed: ${e instanceof Error ? e.message : String(e)}`);
+          } finally {
+            resetAfterFresh();
+            setFreshBusy(false);
+          }
+        },
+      },
+    ]);
+  };
+
+  const updateApp = () => {
+    const n = diff ? diff.sheetOnly.length + diff.changed.length + diff.deletedInApp.length : null;
+    runFresh(
+      'Update app from sheet?',
+      `This replaces everything in the app with the sheet's ${getSettings().syncSheet || 'Inventory'} rows${n !== null ? ` (about ${n} rows differ right now)` : ''}. Items only in the app will be lost. The sheet is not changed.`,
+      overwriteAppFromSheet,
+      (r) => `App updated from the sheet: ${r.count} items imported.`,
+    );
+  };
+
+  const updateSheet = () => {
+    const n = getAllItems().length;
+    runFresh(
+      'Update sheet from app?',
+      `This replaces the sheet's ${getSettings().syncSheet || 'Inventory'} rows with the app's ${n} items. Rows only in the sheet will be lost. The app is not changed.`,
+      overwriteSheetFromApp,
+      (r) => `Sheet updated from the app: ${r.count} rows written.`,
+    );
+  };
+
+  const clearApp = () => {
+    runFresh(
+      'Clear the app?',
+      'This empties the app — items and their photos, Free items, Expenses, and sync history. Settings are kept, and the sheet is not touched. Use “Update app from sheet” afterwards to fill it again.',
+      async () => {
+        clearLocalData();
+        return { count: 0, errors: [] };
+      },
+      () => 'App cleared — it is empty now.',
+    );
+  };
+
+  const clearSheet = () => {
+    runFresh(
+      'Clear the sheet?',
+      `This deletes all data rows from the sheet's ${getSettings().syncSheet || 'Inventory'} tab (the header stays). The app is not touched.`,
+      clearSheetOnServer,
+      (r) => `Sheet cleared: ${r.count} rows deleted.`,
+    );
+  };
 
   if (!configured) {
     return (
@@ -252,6 +339,43 @@ export default function SyncScreen() {
           </Pressable>
         </>
       )}
+
+      <View style={styles.freshSection}>
+        <Text style={styles.sectionTitle}>Start fresh</Text>
+        <Text style={styles.body}>
+          Overwrite one side from the other, or clear a side entirely. Each one asks first — the
+          merge sync above is still the safe default.
+        </Text>
+        <Pressable
+          style={[styles.btn, styles.freshBtn, freshBusy && styles.disabledBtn]}
+          onPress={updateApp}
+          disabled={freshBusy || phase === 'checking' || phase === 'applying'}
+        >
+          <Text style={styles.btnText}>Update app from sheet</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.btn, styles.freshBtn, freshBusy && styles.disabledBtn]}
+          onPress={updateSheet}
+          disabled={freshBusy || phase === 'checking' || phase === 'applying'}
+        >
+          <Text style={styles.btnText}>Update sheet from app</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.btn, styles.dangerBtn, freshBusy && styles.disabledBtn]}
+          onPress={clearApp}
+          disabled={freshBusy || phase === 'checking' || phase === 'applying'}
+        >
+          <Text style={styles.btnText}>Clear app</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.btn, styles.dangerBtn, freshBusy && styles.disabledBtn]}
+          onPress={clearSheet}
+          disabled={freshBusy || phase === 'checking' || phase === 'applying'}
+        >
+          <Text style={styles.btnText}>Clear sheet</Text>
+        </Pressable>
+        {!!freshNote && <Text style={styles.body}>{freshNote}</Text>}
+      </View>
     </ScrollView>
   );
 }
@@ -293,8 +417,11 @@ const styles = StyleSheet.create({
   checkMark: { color: '#fff', fontSize: 15, fontWeight: '700' },
   checkMarkDisabled: { color: colors.muted, fontSize: 15, fontWeight: '700' },
   container: { backgroundColor: colors.background, flex: 1 },
+  dangerBtn: { backgroundColor: '#b42318' },
   disabledBtn: { opacity: 0.5 },
   error: { color: '#b42318', fontSize: 15, lineHeight: 21, marginTop: spacing.md },
+  freshBtn: { backgroundColor: '#57606a' },
+  freshSection: { borderTopColor: colors.border, borderTopWidth: 1, marginTop: spacing.xl, paddingTop: spacing.md },
   meta: { color: colors.muted, fontSize: 14, marginTop: spacing.sm },
   resultCard: {
     backgroundColor: colors.chip,

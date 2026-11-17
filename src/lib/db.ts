@@ -55,6 +55,10 @@ const WEB_TOMBSTONES_KEY = 'reseller-hq-tombstones-v1';
 const WEB_SYNC_STATE_KEY = 'reseller-hq-sync-state-v1';
 const WEB_FREE_ITEMS_KEY = 'reseller-hq-free-items-v1';
 const WEB_EXPENSES_KEY = 'reseller-hq-expenses-v1';
+// Set once the seed has run. After a deliberate clear (clearLocalData) this
+// stays set, so the next load does NOT re-seed — an empty DB means "start
+// fresh", not "first run".
+const WEB_SEEDED_KEY = 'reseller-hq-seeded-v1';
 let webItems: Item[] | null = null;
 let webSettings: Settings | null = null;
 let webFreeItems: FreeItem[] | null = null;
@@ -98,7 +102,7 @@ function seedToItem(s: (typeof SEED_ITEMS)[number], now: string): Item {
     revenue: s.revenue,
     profitMargin: s.profitMargin,
     macBidFees: s.place.toLowerCase().includes('mac'),
-    location: '',
+    location: s.location || '',
     qrCode: qrFor(s.id),
     photos: [],
     whiteBgPhotos: [],
@@ -109,6 +113,9 @@ function seedToItem(s: (typeof SEED_ITEMS)[number], now: string): Item {
 function webLoad(): void {
   if (webItems !== null && webSettings !== null) return;
   const now = new Date().toISOString();
+  // Seeding happens once (first run). After a deliberate clear the marker
+  // is set, so a missing key means "empty on purpose", not "seed me".
+  const seeded = webRead(WEB_SEEDED_KEY) === '1';
   const rawItems = webRead(WEB_ITEMS_KEY);
   let loaded: Item[] | null = null;
   if (rawItems) {
@@ -119,8 +126,8 @@ function webLoad(): void {
       loaded = null;
     }
   }
-  webItems = loaded ?? SEED_ITEMS.map((s) => seedToItem(s, now));
-  if (!loaded) webWrite(WEB_ITEMS_KEY, JSON.stringify(webItems));
+  webItems = loaded ?? (seeded ? [] : SEED_ITEMS.map((s) => seedToItem(s, now)));
+  if (!loaded && !seeded) webWrite(WEB_ITEMS_KEY, JSON.stringify(webItems));
   // Free items + expenses: seeded from the sheet's Free/Expenses tabs; the
   // dashboard refreshes them from the sheet when sync is configured.
   const rawFree = webRead(WEB_FREE_ITEMS_KEY);
@@ -133,8 +140,8 @@ function webLoad(): void {
       loadedFree = null;
     }
   }
-  webFreeItems = loadedFree ?? [...FREE_SEED_ITEMS];
-  if (!loadedFree) webWrite(WEB_FREE_ITEMS_KEY, JSON.stringify(webFreeItems));
+  webFreeItems = loadedFree ?? (seeded ? [] : [...FREE_SEED_ITEMS]);
+  if (!loadedFree && !seeded) webWrite(WEB_FREE_ITEMS_KEY, JSON.stringify(webFreeItems));
   const rawExp = webRead(WEB_EXPENSES_KEY);
   let loadedExp: Expense[] | null = null;
   if (rawExp) {
@@ -145,8 +152,8 @@ function webLoad(): void {
       loadedExp = null;
     }
   }
-  webExpenses = loadedExp ?? [...EXPENSES_SEED_ITEMS];
-  if (!loadedExp) webWrite(WEB_EXPENSES_KEY, JSON.stringify(webExpenses));
+  webExpenses = loadedExp ?? (seeded ? [] : [...EXPENSES_SEED_ITEMS]);
+  if (!loadedExp && !seeded) webWrite(WEB_EXPENSES_KEY, JSON.stringify(webExpenses));
   const rawSettings = webRead(WEB_SETTINGS_KEY);
   if (rawSettings) {
     try {
@@ -157,6 +164,7 @@ function webLoad(): void {
   } else {
     webSettings = { ...DEFAULT_SETTINGS };
   }
+  if (!seeded) webWrite(WEB_SEEDED_KEY, '1');
 }
 
 function webSaveItems(): void {
@@ -249,7 +257,13 @@ export function initDb(): void {
     // Column already exists.
   }
   const count = d.getFirstSync<{ c: number }>('SELECT COUNT(*) AS c FROM items');
-  if ((count?.c ?? 0) === 0) {
+  // Seeding happens once (first run). The '__seeded' marker distinguishes a
+  // deliberate clear (empty on purpose — do NOT re-seed) from a first run.
+  const seededRow = d.getFirstSync<{ value: string }>(
+    "SELECT value FROM settings WHERE key = '__seeded'",
+  );
+  const seeded = !!seededRow;
+  if ((count?.c ?? 0) === 0 && !seeded) {
     const now = new Date().toISOString();
     for (const s of SEED_ITEMS) {
       d.runSync(
@@ -295,9 +309,9 @@ export function initDb(): void {
       [key, String(value)],
     );
   }
-  // Free items + expenses, seeded from the sheet tabs when empty.
+  // Free items + expenses, seeded from the sheet tabs when empty (first run).
   const freeCount = d.getFirstSync<{ c: number }>('SELECT COUNT(*) AS c FROM free_items');
-  if ((freeCount?.c ?? 0) === 0) {
+  if ((freeCount?.c ?? 0) === 0 && !seeded) {
     for (const f of FREE_SEED_ITEMS) {
       d.runSync(
         `INSERT INTO free_items (id, name, box, recPrice, status, dateListed,
@@ -319,7 +333,7 @@ export function initDb(): void {
     }
   }
   const expCount = d.getFirstSync<{ c: number }>('SELECT COUNT(*) AS c FROM expenses');
-  if ((expCount?.c ?? 0) === 0) {
+  if ((expCount?.c ?? 0) === 0 && !seeded) {
     for (const e of EXPENSES_SEED_ITEMS) {
       d.runSync(
         'INSERT INTO expenses (id, name, price, date, status) VALUES (?, ?, ?, ?, ?)',
@@ -327,6 +341,8 @@ export function initDb(): void {
       );
     }
   }
+  // Mark the seed as done, so a later empty DB is a deliberate clear.
+  d.runSync("INSERT OR IGNORE INTO settings (key, value) VALUES ('__seeded', '1')");
 }
 
 type ItemRow = Omit<Item, 'photos' | 'whiteBgPhotos' | 'macBidFees'> & {
@@ -545,6 +561,35 @@ export function setStatus(id: string, status: ItemStatus): void {
   updateItem(id, patch);
 }
 
+// The next free item id, continuing the id series the app already uses.
+// Ids are "<prefix><number>" (RHQ-000001, RB-001, ...). The prefix with the
+// most items wins, and its zero-padding is kept, so a sheet that uses
+// RHQ-000001 keeps getting RHQ-000254, RHQ-000255, ... while an older
+// RB-xxx set keeps getting RB-193, RB-194, ...
+function nextItemId(all: Item[]): string {
+  const byPrefix = new Map<string, { count: number; max: number; width: number }>();
+  for (const it of all) {
+    const m = it.id.match(/^(.*?)(\d+)$/);
+    if (!m) continue;
+    const prefix = m[1];
+    const n = parseInt(m[2], 10);
+    const cur = byPrefix.get(prefix) ?? { count: 0, max: 0, width: m[2].length };
+    cur.count += 1;
+    if (n > cur.max) cur.max = n;
+    if (m[2].length > cur.width) cur.width = m[2].length;
+    byPrefix.set(prefix, cur);
+  }
+  if (byPrefix.size === 0) return 'RB-001';
+  let best: { prefix: string; count: number; max: number; width: number } | null = null;
+  for (const [prefix, v] of byPrefix) {
+    if (!best || v.count > best.count || (v.count === best.count && v.max > best.max)) {
+      best = { prefix, ...v };
+    }
+  }
+  if (!best) return 'RB-001';
+  return `${best.prefix}${String(best.max + 1).padStart(best.width, '0')}`;
+}
+
 export function addItem(input: {
   name: string;
   purchase: number;
@@ -560,11 +605,7 @@ export function addItem(input: {
   const all = getAllItems();
   const existing = input.id ? all.find((it) => it.id === input.id) : undefined;
   if (existing) return existing;
-  const maxNum = all.reduce((m, it) => {
-    const n = parseInt(it.id.replace('RB-', ''), 10);
-    return Number.isFinite(n) && n > m ? n : m;
-  }, 0);
-  const id = input.id ?? `RB-${String(maxNum + 1).padStart(3, '0')}`;
+  const id = input.id ?? nextItemId(all);
   const item: Item = {
     id,
     name: input.name,
@@ -714,6 +755,7 @@ export function getSettings(): Settings {
     if (r.key === 'salesTaxPct') out.salesTaxPct = parseFloat(r.value) || 0.07;
     if (r.key === 'syncUrl') out.syncUrl = r.value;
     if (r.key === 'syncToken') out.syncToken = r.value;
+    if (r.key === 'syncSheet') out.syncSheet = r.value || 'Inventory';
   }
   return out;
 }
@@ -737,34 +779,52 @@ export function saveSettings(s: Settings): void {
 // ---------------------------------------------------------------------------
 // Clear local data — a fresh restart on this device.
 // Wipes the items (including their photos), free items, expenses,
-// tombstones, and sync history, then re-seeds from the original seed files
-// (the 192 Purchase items, 61 free items, 8 expenses). Settings are kept
-// (sync URL/token, BG remover URL, fee/margin defaults), so a re-sync after
-// the reset just works. The sheet itself is never touched.
+// tombstones, and sync history. NOTHING is re-seeded: an empty DB after a
+// clear means "start fresh", and the '__seeded' marker stops the next launch
+// from putting the seed back (that re-seed is why the old clear looked like
+// it did nothing — the 192 items came straight back). Settings are kept
+// (sync URL/token, sheet tab, BG remover URL, fee/margin defaults), so a
+// re-sync after the reset just works. The sheet itself is never touched.
+// To fill the app again, use Sync → "Update app from sheet".
 // ---------------------------------------------------------------------------
 
-export function clearLocalData(): void {
+// Wipe the app's items, tombstones, and sync history (no re-seed).
+export function clearAppItems(): void {
   if (IS_WEB) {
     try {
       window.localStorage.removeItem(WEB_ITEMS_KEY);
-      window.localStorage.removeItem(WEB_FREE_ITEMS_KEY);
-      window.localStorage.removeItem(WEB_EXPENSES_KEY);
       window.localStorage.removeItem(WEB_TOMBSTONES_KEY);
       window.localStorage.removeItem(WEB_SYNC_STATE_KEY);
+      window.localStorage.setItem(WEB_SEEDED_KEY, '1');
     } catch {
       // Storage unavailable — the in-memory reset below still applies.
     }
     webItems = null;
-    webFreeItems = null;
-    webExpenses = null;
-    webLoad(); // re-seeds from the seed files
     return;
   }
   const d = getDb();
   d.runSync('DELETE FROM items');
-  d.runSync('DELETE FROM free_items');
-  d.runSync('DELETE FROM expenses');
   d.runSync('DELETE FROM tombstones');
   d.runSync("DELETE FROM settings WHERE key = '__syncState'");
-  initDb(); // re-seeds every table that is now empty
+  d.runSync(
+    "INSERT INTO settings (key, value) VALUES ('__seeded', '1') ON CONFLICT(key) DO UPDATE SET value='1'",
+  );
+}
+
+export function clearLocalData(): void {
+  clearAppItems();
+  if (IS_WEB) {
+    try {
+      window.localStorage.removeItem(WEB_FREE_ITEMS_KEY);
+      window.localStorage.removeItem(WEB_EXPENSES_KEY);
+    } catch {
+      // Storage unavailable — the in-memory reset below still applies.
+    }
+    webFreeItems = null;
+    webExpenses = null;
+    return;
+  }
+  const d = getDb();
+  d.runSync('DELETE FROM free_items');
+  d.runSync('DELETE FROM expenses');
 }

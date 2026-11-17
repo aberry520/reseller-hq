@@ -29,7 +29,7 @@ export default function SettingsScreen() {
   const clear = () => {
     Alert.alert(
       'Clear local data?',
-      'This deletes everything stored on this device — items and their photos, Free items, Expenses, and sync history — and starts over from the original 192 items. Your settings (including the sync URL and token) are kept, and the sheet itself is never touched. This cannot be undone.',
+      'This deletes everything stored on this device — items and their photos, Free items, Expenses, and sync history — and leaves the app empty. Your settings (including the sync URL and token) are kept, and the sheet itself is never touched. Use Sync → “Update app from sheet” afterwards to fill the app again from the sheet. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -39,7 +39,7 @@ export default function SettingsScreen() {
             clearLocalData();
             Alert.alert(
               'Local data cleared',
-              'The app is back to the original 192 items. Your settings were kept — go back to the Inventory or Dashboard to see the fresh data.',
+              'The app is empty now. Your settings were kept — go to Sync and use “Update app from sheet” to fill it again from the sheet.',
             );
           },
         },
@@ -116,6 +116,21 @@ export default function SettingsScreen() {
         sheet). Blank = sync off.
       </Text>
 
+      <Text style={styles.label}>Sheet tab name</Text>
+      <TextInput
+        style={styles.input}
+        value={s.syncSheet}
+        onChangeText={(v) => setS({ ...s, syncSheet: v })}
+        placeholder="Inventory"
+        autoCapitalize="none"
+        autoCorrect={false}
+        returnKeyType="next"
+      />
+      <Text style={styles.note}>
+        The tab the sync reads and writes (default Inventory). Everything lives on one tab now;
+        a free item is a row whose cost is 0.
+      </Text>
+
       <Text style={styles.label}>Sheet sync token</Text>
       <TextInput
         style={styles.input}
@@ -142,8 +157,9 @@ export default function SettingsScreen() {
       <Text style={styles.label}>Local data</Text>
       <Text style={styles.note}>
         Start over on this device: deletes the items and their photos, Free items, Expenses, and
-        sync history, then re-seeds the original 192 items. Your settings are kept, and the sheet
-        itself is never touched.
+        sync history, and leaves the app empty (nothing is re-seeded). Your settings are kept,
+        and the sheet itself is never touched. Use Sync → “Update app from sheet” to fill the
+        app again from the sheet.
       </Text>
       <Pressable style={[styles.btn, styles.dangerBtn]} onPress={clear}>
         <Text style={styles.btnText}>Clear local data</Text>

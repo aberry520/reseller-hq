@@ -20,6 +20,7 @@ export interface SheetRow {
   estShip: number;
   researchPrice: number;
   notes: string;
+  location: string;
   place: string;
   datePurchased: string;
   status: string;
@@ -30,15 +31,17 @@ export interface SheetRow {
   shipping: number;
 }
 
-// The 13 input columns — the only fields that ever sync. Photos, location,
-// the per-item MAC.BID switch and the computed prices stay in the app;
-// the sheet's formula columns stay in the sheet.
+// The input columns — the only fields that ever sync. Photos, the per-item
+// MAC.BID switch and the computed prices stay in the app; the sheet's
+// formula columns stay in the sheet. (Location used to be app-only, but the
+// one-Inventory-tab sheet has a Location column, so it syncs now.)
 export interface SheetFields {
   item: string;
   purchase: number;
   estShip: number;
   researchPrice: number;
   notes: string;
+  location: string;
   place: string;
   datePurchased: string;
   status: string;
@@ -83,6 +86,7 @@ const FIELD_LABELS: Array<{ key: keyof SheetFields; label: string }> = [
   { key: 'estShip', label: 'Est ship' },
   { key: 'researchPrice', label: 'Research price' },
   { key: 'notes', label: 'Notes' },
+  { key: 'location', label: 'Location' },
   { key: 'place', label: 'Place' },
   { key: 'datePurchased', label: 'Date purchased' },
   { key: 'status', label: 'Status' },
@@ -125,6 +129,7 @@ export function itemToSheetFields(item: Item): SheetFields {
     estShip: item.estShip,
     researchPrice: item.researchPrice,
     notes: item.notes,
+    location: item.location,
     place: item.place,
     datePurchased: item.datePurchased,
     status: item.status,
@@ -168,6 +173,7 @@ export function sheetRowToPatch(
     estShip: sheet.estShip,
     researchPrice: sheet.researchPrice,
     notes: sheet.notes,
+    location: sheet.location || '',
     place: sheet.place,
     datePurchased: sheet.datePurchased,
     status: normaliseStatus(sheet.status),

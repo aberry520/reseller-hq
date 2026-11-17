@@ -61,6 +61,7 @@ function makeRow(over: Partial<SheetRow> = {}): SheetRow {
     estShip: 5,
     researchPrice: 0,
     notes: '',
+    location: '',
     place: 'MAC.BID Anderson',
     datePurchased: '7/1/2026',
     status: 'Listed',

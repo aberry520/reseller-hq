@@ -22,7 +22,7 @@ export type ItemStatus =
   | 'Trash Return';
 
 export interface SeedItem {
-  id: string; // RB-001, RB-002, ... in seed order — stable, used in QR codes
+  id: string; // RHQ-000001, RHQ-000002, ... in seed order — stable, used in QR codes
   name: string;
   purchase: number;
   estShip: number;
@@ -30,6 +30,7 @@ export interface SeedItem {
   minPrice: number;
   researchPrice: number;
   notes: string;
+  location: string;
   place: string;
   datePurchased: string;
   status: string; // raw sheet status, '' means unlisted
@@ -84,6 +85,7 @@ export interface Settings {
   salesTaxPct: number; // 0.07 for Anderson, SC
   syncUrl: string; // Google Apps Script web app URL for sheet sync (blank = off)
   syncToken: string; // SYNC_TOKEN script property — the sync password
+  syncSheet: string; // the sheet tab the sync reads/writes (default 'Inventory')
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -94,6 +96,7 @@ export const DEFAULT_SETTINGS: Settings = {
   salesTaxPct: 0.07,
   syncUrl: '',
   syncToken: '',
+  syncSheet: 'Inventory',
 };
 
 export function normaliseStatus(raw: string): ItemStatus {

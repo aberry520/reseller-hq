@@ -1,8 +1,9 @@
 // Dashboard — the app's version of the sheet's Home tab.
 // Date-range sales (All / Sourced / Free), all-time sales (All / Sourced),
 // Total Spent in the range, and Money on Hand. All numbers are computed
-// from the app's items plus the Free and Expenses lists (seeded from the
-// sheet; refreshed from the sheet when sync is configured).
+// from the app's items (the one Inventory tab; a free item is a row whose
+// cost is 0) plus the Expenses list (seeded from the sheet; refreshed from
+// the sheet when sync is configured).
 //
 // The price calculator from Home lives in Tools → Margin calculator, so it
 // is not duplicated here.
@@ -14,10 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getAllItems,
   getExpenses,
-  getFreeItems,
   getSettings,
   replaceExpenses,
-  replaceFreeItems,
 } from '../../src/lib/db';
 import {
   computeDashboard,
@@ -26,7 +25,7 @@ import {
   parseDashboardDate,
   DashboardData,
 } from '../../src/lib/dashboard';
-import { fetchExpenseRows, fetchFreeRows } from '../../src/lib/sync';
+import { fetchExpenseRows } from '../../src/lib/sync';
 import { formatMoney } from '../../src/lib/pricing';
 import { colors, radius, spacing } from '../../src/lib/ui';
 
@@ -74,22 +73,19 @@ export default function DashboardScreen() {
     const start = parseDashboardDate(startStr);
     const end = parseDashboardDate(endStr);
     if (!start || !end || end < start) return;
-    setData(
-      computeDashboard(getAllItems(), getFreeItems(), getExpenses(), start, end),
-    );
+    setData(computeDashboard(getAllItems(), getExpenses(), start, end));
   }, []);
 
   const refreshFromSheet = useCallback(async () => {
     const s = getSettings();
     if (!s.syncUrl.trim() || !s.syncToken.trim()) {
-      setNote('Free + Expenses are from the saved copy — set up sheet sync to refresh them from the sheet.');
+      setNote('Expenses are from the saved copy — set up sheet sync to refresh them from the sheet.');
       return 'saved';
     }
     try {
-      const [free, exp] = await Promise.all([fetchFreeRows(), fetchExpenseRows()]);
-      replaceFreeItems(free);
+      const exp = await fetchExpenseRows();
       replaceExpenses(exp);
-      setNote(`Free + Expenses refreshed from the sheet (${free.length} free items, ${exp.length} expenses).`);
+      setNote(`Expenses refreshed from the sheet (${exp.length} expenses).`);
       return 'refreshed';
     } catch (e) {
       setNote(`Could not reach the sheet (${e instanceof Error ? e.message : 'error'}) — using the saved copy.`);
@@ -104,8 +100,10 @@ export default function DashboardScreen() {
       const endStr = formatDashboardDate(end);
       setStartText(startStr);
       setEndText(endStr);
-      // Refresh Free + Expenses from the sheet when configured, then show
-      // the numbers (from the saved copy when offline or not configured).
+      // Refresh Expenses from the sheet when configured, then show the
+      // numbers (from the saved copy when offline or not configured).
+      // Free items need no refresh: they are the Inventory rows whose cost
+      // is 0, so they come along with the items.
       setRefreshing(true);
       refreshFromSheet()
         .finally(() => {
@@ -191,7 +189,7 @@ export default function DashboardScreen() {
             <Text style={styles.chipText}>Last month</Text>
           </Pressable>
           <Pressable style={styles.chip} onPress={onRefresh} disabled={refreshing}>
-            <Text style={styles.chipText}>{refreshing ? 'Refreshing…' : 'Refresh Free + Expenses'}</Text>
+            <Text style={styles.chipText}>{refreshing ? 'Refreshing…' : 'Refresh Expenses'}</Text>
           </Pressable>
         </View>
         {!!note && <Text style={styles.note}>{note}</Text>}

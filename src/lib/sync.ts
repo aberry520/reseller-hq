@@ -1,11 +1,18 @@
-// Two-way sheet sync, review-first (git-style). The pure diff lives in
-// sync-diff.ts; this file does the impure parts: fetching the sheet through
-// the Apps Script endpoint (sync/sheet-sync.gs) and applying an approved
-// plan. Nothing is written to the sheet without going through the review
-// screen (app/sync.tsx).
+// Two-way sheet sync, review-first (git-style), plus the start-fresh
+// actions (overwrite one side from the other, or clear a side). The pure
+// diff lives in sync-diff.ts; this file does the impure parts: fetching the
+// sheet through the Apps Script endpoint (sync/sheet-sync.gs) and applying
+// an approved plan. Nothing is written to the sheet without going through
+// the review screen (app/sync.tsx) — except the explicit overwrite/clear
+// actions there, which each ask for confirmation first.
+//
+// The sheet is universal: one Inventory tab, columns found by header text,
+// and a free item is just a row whose cost (Purchase) is 0. The tab name
+// comes from Settings (syncSheet, default 'Inventory').
 
 import {
   addItem,
+  clearAppItems,
   clearDeletedIds,
   getAllItems,
   getSettings,
@@ -19,16 +26,24 @@ import {
   SheetRow,
   SyncPlan,
 } from './sync-diff';
-import { Expense, FreeItem, Item, normaliseFreeStatus } from './types';
+import { Expense, Item } from './types';
 
 export type { SheetRow, SyncPlan } from './sync-diff';
 
-export async function fetchSheetRows(): Promise<SheetRow[]> {
-  const { syncUrl, syncToken } = getSettings();
+function syncConfig(): { url: string; token: string; tab: string } {
+  const { syncUrl, syncToken, syncSheet } = getSettings();
   if (!syncUrl.trim()) throw new Error('Sheet sync URL is not set (Settings → Sheet sync).');
   if (!syncToken.trim()) throw new Error('Sheet sync token is not set (Settings → Sheet sync).');
-  const url = `${syncUrl.replace(/\/$/, '')}?token=${encodeURIComponent(syncToken.trim())}`;
-  const res = await fetch(url);
+  return {
+    url: syncUrl.replace(/\/$/, ''),
+    token: syncToken.trim(),
+    tab: (syncSheet || 'Inventory').trim(),
+  };
+}
+
+export async function fetchSheetRows(): Promise<SheetRow[]> {
+  const { url, token, tab } = syncConfig();
+  const res = await fetch(`${url}?token=${encodeURIComponent(token)}&tab=${encodeURIComponent(tab)}`);
   if (!res.ok) throw new Error(`Sheet sync failed (HTTP ${res.status}). Check the URL in Settings.`);
   const data = (await res.json()) as { rows?: SheetRow[]; error?: string };
   if (data.error) throw new Error(`Sheet sync failed: ${data.error}`);
@@ -36,25 +51,8 @@ export async function fetchSheetRows(): Promise<SheetRow[]> {
   return data.rows;
 }
 
-// Dashboard refresh: pull the Free and Expenses tabs from the sheet and
-// return them as local items (ids by tab row order — these lists are
-// replaced wholesale, the sheet is their source of truth).
-export async function fetchFreeRows(): Promise<FreeItem[]> {
-  const rows = await fetchTabRows('Free');
-  return (rows as Array<Record<string, unknown>>).map((r, i) => ({
-    id: `FR-${String(i + 1).padStart(3, '0')}`,
-    name: String(r.name ?? ''),
-    box: String(r.box ?? ''),
-    recPrice: Number(r.recPrice ?? 0) || 0,
-    status: normaliseFreeStatus(String(r.status ?? '')),
-    dateListed: String(r.dateListed ?? ''),
-    dateSold: String(r.dateSold ?? ''),
-    soldPrice: Number(r.soldPrice ?? 0) || 0,
-    fees: Number(r.fees ?? 0) || 0,
-    shipping: Number(r.shipping ?? 0) || 0,
-  }));
-}
-
+// Dashboard refresh: pull the Expenses tab from the sheet (ids by tab row
+// order — the list is replaced wholesale, the sheet is its source of truth).
 export async function fetchExpenseRows(): Promise<Expense[]> {
   const rows = await fetchTabRows('Expenses');
   return (rows as Array<Record<string, unknown>>).map((r, i) => ({
@@ -67,17 +65,48 @@ export async function fetchExpenseRows(): Promise<Expense[]> {
 }
 
 async function fetchTabRows(tab: string): Promise<unknown[]> {
-  const { syncUrl, syncToken } = getSettings();
-  if (!syncUrl.trim() || !syncToken.trim()) {
-    throw new Error('Sheet sync URL/token is not set (Settings → Sheet sync).');
-  }
-  const url = `${syncUrl.replace(/\/$/, '')}?token=${encodeURIComponent(syncToken.trim())}&tab=${tab}`;
-  const res = await fetch(url);
+  const { url, token } = syncConfig();
+  const res = await fetch(`${url}?token=${encodeURIComponent(token)}&tab=${encodeURIComponent(tab)}`);
   if (!res.ok) throw new Error(`Sheet sync failed (HTTP ${res.status}).`);
   const data = (await res.json()) as { rows?: unknown[]; error?: string };
   if (data.error) throw new Error(`Sheet sync failed: ${data.error}`);
   if (!Array.isArray(data.rows)) throw new Error('Sheet sync returned an unexpected response.');
   return data.rows;
+}
+
+// POST a body to the script and return its JSON. Throws on HTTP errors or
+// on an { error } response, so callers never apply a half-finished result.
+async function postSync(body: Record<string, unknown>): Promise<{
+  ok?: boolean;
+  error?: string;
+  upserted?: number;
+  added?: number;
+  assigned?: number;
+  trashed?: number;
+  written?: number;
+  cleared?: number;
+  errors?: string[];
+}> {
+  const { url, token, tab } = syncConfig();
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, token, tab }),
+  });
+  if (!res.ok) throw new Error(`Sheet sync failed (HTTP ${res.status}). Nothing was applied.`);
+  const data = (await res.json()) as {
+    ok?: boolean;
+    error?: string;
+    upserted?: number;
+    added?: number;
+    assigned?: number;
+    trashed?: number;
+    written?: number;
+    cleared?: number;
+    errors?: string[];
+  };
+  if (data.error) throw new Error(`Sheet sync failed: ${data.error}`);
+  return data;
 }
 
 export interface SyncResult {
@@ -91,10 +120,6 @@ export interface SyncResult {
 }
 
 export async function applySync(plan: SyncPlan): Promise<SyncResult> {
-  const { syncUrl, syncToken } = getSettings();
-  if (!syncUrl.trim() || !syncToken.trim()) {
-    throw new Error('Sheet sync URL/token is not set (Settings → Sheet sync).');
-  }
   const settings = getSettings();
   const result: SyncResult = {
     addedToSheet: 0,
@@ -163,28 +188,12 @@ export async function applySync(plan: SyncPlan): Promise<SyncResult> {
     .map((id) => byId.get(id))
     .filter((it): it is Item => !!it)
     .map((it) => ({ appId: it.id, fields: itemToSheetFields(it) }));
-  const body = {
-    token: syncToken.trim(),
+  const data = await postSync({
+    action: 'merge',
     upserts,
     assignIds,
     trash: plan.trashAppIds,
-  };
-  const res = await fetch(syncUrl.replace(/\/$/, ''), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Sheet sync failed (HTTP ${res.status}). Nothing was applied.`);
-  const data = (await res.json()) as {
-    ok?: boolean;
-    error?: string;
-    upserted?: number;
-    added?: number;
-    assigned?: number;
-    trashed?: number;
-    errors?: string[];
-  };
-  if (data.error) throw new Error(`Sheet sync failed: ${data.error}`);
   result.addedToSheet = data.added ?? 0;
   result.updatedSheet = data.upserted ?? 0;
   result.trashedInSheet = data.trashed ?? 0;
@@ -205,4 +214,77 @@ export async function applySync(plan: SyncPlan): Promise<SyncResult> {
   saveSyncState([...nowInSync], new Date().toISOString(), plan.source);
 
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Start-fresh actions. Each one is explicit and destructive in one direction
+// only; the Sync screen confirms every one before calling it.
+// ---------------------------------------------------------------------------
+
+export interface OverwriteResult {
+  count: number;
+  errors: string[];
+}
+
+// Replace everything in the app with the sheet's rows. Rows that already
+// have an App ID keep it; rows without one get a new RB-xxx, which is
+// stamped back to the sheet so the next merge sync does not re-import them.
+export async function overwriteAppFromSheet(): Promise<OverwriteResult> {
+  const rows = await fetchSheetRows();
+  const settings = getSettings();
+  clearAppItems();
+  const errors: string[] = [];
+  const ids: string[] = [];
+  const assignIds: Array<{ row: number; appId: string }> = [];
+  for (const sheet of rows) {
+    try {
+      const created = addItem({
+        id: sheet.appId || undefined,
+        name: sheet.item,
+        purchase: sheet.purchase,
+        estShip: sheet.estShip,
+        place: sheet.place,
+        datePurchased: sheet.datePurchased,
+        notes: sheet.notes,
+      });
+      updateItem(created.id, sheetRowToPatch(sheet, created, settings));
+      ids.push(created.id);
+      if (!sheet.appId) assignIds.push({ row: sheet.row, appId: created.id });
+    } catch (e) {
+      errors.push(`import "${sheet.item}": ${String(e)}`);
+    }
+  }
+  if (assignIds.length > 0) {
+    try {
+      const data = await postSync({ action: 'merge', upserts: [], assignIds, trash: [] });
+      if (data.errors) errors.push(...data.errors);
+    } catch (e) {
+      errors.push(`stamping App IDs back to the sheet: ${String(e)}`);
+    }
+  }
+  saveSyncState(ids, new Date().toISOString(), getSyncState()?.source);
+  return { count: ids.length, errors };
+}
+
+// Replace the whole sheet tab with the app's items.
+export async function overwriteSheetFromApp(): Promise<OverwriteResult> {
+  const items = getAllItems();
+  const data = await postSync({
+    action: 'overwrite',
+    rows: items.map((it) => ({ appId: it.id, fields: itemToSheetFields(it) })),
+  });
+  saveSyncState(
+    items.map((it) => it.id),
+    new Date().toISOString(),
+    getSyncState()?.source,
+  );
+  return { count: data.written ?? items.length, errors: data.errors ?? [] };
+}
+
+// Delete all data rows from the sheet tab (keeps the header). The app is
+// not touched, and nothing is in sync afterwards.
+export async function clearSheetOnServer(): Promise<OverwriteResult> {
+  const data = await postSync({ action: 'clear' });
+  saveSyncState([], new Date().toISOString(), getSyncState()?.source);
+  return { count: data.cleared ?? 0, errors: data.errors ?? [] };
 }

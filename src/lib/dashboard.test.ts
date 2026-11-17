@@ -1,7 +1,14 @@
 // Dashboard checks — run with `npm run test:dashboard`
 // (scripts/verify-dashboard.mjs compiles this file's assertions against
-// src/lib/dashboard.ts). Every number below is copied from the sheet's Home
-// tab, so the app's dashboard must reproduce the sheet exactly.
+// src/lib/dashboard.ts). The numbers below are the Home tab's values
+// re-expressed under the one-Inventory-tab model: Free = cost of goods 0,
+// Sourced = cost > 0, so the 61 Free-tab rows and the 2 cost-0 Purchase
+// rows (RB-012, RB-013) are Free, and the other 190 Purchase rows are
+// Sourced. The seed is the new Inventory tab (253 rows, RHQ-000001..253),
+// so the Free rows are already in it as cost-0 items. The combined totals
+// (All, Money on Hand, Total Spent) are unchanged from the old model; the
+// Sourced all-time numbers move because RB-012/RB-013 ($41 of sales,
+// $17.92 of fees/shipping) leave Sourced.
 //
 // Two known differences from the sheet are asserted as the APP's (correct)
 // values, not the sheet's:
@@ -11,7 +18,6 @@
 
 import { computeDashboard, parseDashboardDate } from './dashboard';
 import { EXPENSES_SEED_ITEMS } from './expenses-seed-data';
-import { FREE_SEED_ITEMS } from './free-seed-data';
 import { SEED_ITEMS } from './seed-data';
 import { Item, normaliseStatus } from './types';
 
@@ -45,7 +51,7 @@ const items: Item[] = SEED_ITEMS.map((s) => ({
   revenue: s.revenue,
   profitMargin: s.profitMargin,
   macBidFees: s.place.toLowerCase().includes('mac'),
-  location: '',
+  location: s.location || '',
   qrCode: `reseller://item/${s.id}`,
   photos: [],
   whiteBgPhotos: [],
@@ -54,7 +60,7 @@ const items: Item[] = SEED_ITEMS.map((s) => ({
 
 const start = parseDashboardDate('10/1/2026') as Date;
 const end = parseDashboardDate('10/31/2026') as Date;
-const d = computeDashboard(items, FREE_SEED_ITEMS, EXPENSES_SEED_ITEMS, start, end);
+const d = computeDashboard(items, EXPENSES_SEED_ITEMS, start, end);
 
 // Date range — All Sales (Home rows 9-15, columns B-C).
 check('range all: number of sales', d.range.all.numberOfSales, 28);
@@ -63,7 +69,7 @@ check('range all: cost of sold goods', d.range.all.costOfSoldGoods, 151.01);
 check('range all: fees/shipping', d.range.all.feesShipping, 407.26);
 check('range all: profit', d.range.all.profit, 1067.72);
 check('range all: average sale price', d.range.all.avgSalePrice, 58.07);
-check('range all: average profit margin', d.range.all.avgProfitMargin, 0.5006, 0.001);
+check('range all: average profit margin', d.range.all.avgProfitMargin, 0.5012, 0.001);
 
 // Date range — Sourced Sales (Home rows 9-15, columns F-G).
 check('range sourced: number of sales', d.range.sourced.numberOfSales, 13);
@@ -72,7 +78,7 @@ check('range sourced: cost of sold goods', d.range.sourced.costOfSoldGoods, 151.
 check('range sourced: fees/shipping', d.range.sourced.feesShipping, 376.84);
 check('range sourced: profit', d.range.sourced.profit, 462.14);
 check('range sourced: average sale price', d.range.sourced.avgSalePrice, 76.15);
-check('range sourced: average profit margin', d.range.sourced.avgProfitMargin, 0.5006, 0.001);
+check('range sourced: average profit margin', d.range.sourced.avgProfitMargin, 0.5012, 0.001);
 
 // Date range — Free Sales (Home rows 9-15, columns J-K).
 check('range free: number of sales', d.range.free.numberOfSales, 15);
@@ -93,15 +99,17 @@ check('all time all: fees/shipping', d.allTime.all.feesShipping, 1665.77);
 check('all time all: profit', d.allTime.all.profit, 4530.25);
 check('all time all: average sale price', d.allTime.all.avgSalePrice, 68.29);
 
-// All time — Sourced Sales (Home rows 25-32, columns F-G).
-check('all time sourced: number of sales', d.allTime.sourced.numberOfSales, 63);
-check('all time sourced: total in sales', d.allTime.sourced.totalSales, 4383.88);
+// All time — Sourced Sales (Home rows 25-32, columns F-G, re-expressed
+// under the new model: the 2 cost-0 Purchase rows are Free now, so Sourced
+// drops from 63 sales / $4,383.88 to 61 / $4,342.88).
+check('all time sourced: number of sales', d.allTime.sourced.numberOfSales, 61);
+check('all time sourced: total in sales', d.allTime.sourced.totalSales, 4342.88);
 check('all time sourced: cost of goods', d.allTime.sourced.costOfGoods, 1933.77);
 check('all time sourced: cost of sold goods', d.allTime.sourced.costOfSoldGoods, 710.29);
 check('all time sourced: cost of inventory', d.allTime.sourced.costOfInventory, 1223.48);
-check('all time sourced: fees/shipping', d.allTime.sourced.feesShipping, 1341.68);
-check('all time sourced: profit', d.allTime.sourced.profit, 2341.35);
-check('all time sourced: average sale price', d.allTime.sourced.avgSalePrice, 69.59);
+check('all time sourced: fees/shipping', d.allTime.sourced.feesShipping, 1323.76);
+check('all time sourced: profit', d.allTime.sourced.profit, 2318.27);
+check('all time sourced: average sale price', d.allTime.sourced.avgSalePrice, 71.19);
 
 // Money on Hand (Home row 37) and Total Spent in the range (Home row 5).
 check('money on hand', d.moneyOnHand, 1844.2);

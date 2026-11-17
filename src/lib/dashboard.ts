@@ -1,7 +1,11 @@
 // Dashboard stats — the app's version of the sheet's Home tab.
-// Pure functions over the app's items (Purchase), free items (Free tab) and
-// expenses (Expenses tab), so they can be verified against the sheet's
-// numbers (scripts/verify-dashboard.mjs).
+// Pure functions over the app's items (the one Inventory tab) and expenses,
+// so they can be verified against the sheet's numbers
+// (scripts/verify-dashboard.mjs).
+//
+// A "free" item is a row whose cost of goods (Purchase) is 0 — there is no
+// separate Free list any more; everything lives on the one Inventory tab.
+//   Sourced = cost > 0, Free = cost = 0, All = both.
 //
 // Definitions match the Home tab's formulas exactly, quirks included:
 // - A "sale" is keyed on Sold Price, not status: the sheet counts
@@ -16,7 +20,7 @@
 //   sitting on unsold Purchase rows — same as the sheet's SUM.
 // - Average Profit Margin in the range section is the sheet's
 //   AVERAGE(Purchase[Profit Mrgin]): the all-time average over sold
-//   Purchase items, not range-filtered; Free is 0, as the sheet hardcodes.
+//   Sourced items, not range-filtered; Free is 0, as the sheet hardcodes.
 // - Money on Hand = all-time profit (all) - cost of goods - sum(expenses).
 // - Total Spent (range) sums Purchase cost by Date Purchased in the range,
 //   over ALL rows. The sheet's formula only covers rows 3-139, so for
@@ -24,7 +28,7 @@
 //   $192.34 — the October purchases sit in rows 140+.
 
 import { roundMoney } from './pricing';
-import { Expense, FreeItem, Item } from './types';
+import { Expense, Item } from './types';
 
 export interface RangeStats {
   numberOfSales: number;
@@ -92,10 +96,6 @@ function purchaseProfit(it: Item): number {
   return roundMoney(it.soldPrice - it.purchase - it.fees - it.shipping);
 }
 
-function freeProfit(it: FreeItem): number {
-  return roundMoney(it.soldPrice - it.fees - it.shipping);
-}
-
 function rangeStatsFor(
   sales: Array<{ soldPrice: number; purchase: number; fees: number; shipping: number }>,
   avgMarginAllTime: number,
@@ -117,25 +117,27 @@ function rangeStatsFor(
 
 export function computeDashboard(
   items: Item[],
-  freeItems: FreeItem[],
   expenses: Expense[],
   start: Date,
   end: Date,
 ): DashboardData {
+  // Free = cost of goods is 0; Sourced = cost > 0.
+  const sourcedItems = items.filter((it) => it.purchase > 0);
+  const freeItems = items.filter((it) => it.purchase === 0);
   // Sold = a sold price is recorded. Date Sold decides the range.
-  const soldPurchase = items.filter((it) => it.soldPrice > 0);
+  const soldSourced = sourcedItems.filter((it) => it.soldPrice > 0);
   const soldFree = freeItems.filter((it) => it.soldPrice > 0);
 
-  const rangePurchase = soldPurchase.filter((it) =>
+  const rangeSourced = soldSourced.filter((it) =>
     inRange(parseDashboardDate(it.dateSold), start, end),
   );
   const rangeFree = soldFree.filter((it) =>
     inRange(parseDashboardDate(it.dateSold), start, end),
   );
 
-  // The sheet's Average Profit Margin: all-time average over sold Purchase
+  // The sheet's Average Profit Margin: all-time average over sold Sourced
   // items (not range-filtered). Free is 0, as the sheet hardcodes it.
-  const margins = soldPurchase.map((it) =>
+  const margins = soldSourced.map((it) =>
     it.soldPrice > 0 ? purchaseProfit(it) / it.soldPrice : 0,
   );
   const avgMarginAllTime =
@@ -144,7 +146,7 @@ export function computeDashboard(
       : 0;
 
   const sourced: RangeStats = rangeStatsFor(
-    rangePurchase.map((it) => ({
+    rangeSourced.map((it) => ({
       soldPrice: it.soldPrice,
       purchase: it.purchase,
       fees: it.fees,
@@ -179,29 +181,26 @@ export function computeDashboard(
   const costOfSoldGoods = sum(
     items.filter((it) => it.dateSold.trim() !== '').map((it) => it.purchase),
   );
-  const feesShippingAll = sum([
-    ...items.map((it) => it.fees + it.shipping),
-    ...freeItems.map((it) => it.fees + it.shipping),
-  ]);
-  const feesShippingSourced = sum(items.map((it) => it.fees + it.shipping));
-  const profitSourced = sum(soldPurchase.map((it) => purchaseProfit(it)));
-  const profitFree = sum(soldFree.map((it) => freeProfit(it)));
+  const feesShippingAll = sum(items.map((it) => it.fees + it.shipping));
+  const feesShippingSourced = sum(sourcedItems.map((it) => it.fees + it.shipping));
+  const profitSourced = sum(soldSourced.map((it) => purchaseProfit(it)));
+  const profitFree = sum(soldFree.map((it) => purchaseProfit(it)));
 
   const allTimeSourced: AllTimeStats = {
-    numberOfSales: soldPurchase.length,
-    totalSales: sum(soldPurchase.map((it) => it.soldPrice)),
+    numberOfSales: soldSourced.length,
+    totalSales: sum(soldSourced.map((it) => it.soldPrice)),
     costOfGoods,
     costOfSoldGoods,
     costOfInventory: roundMoney(costOfGoods - costOfSoldGoods),
     feesShipping: feesShippingSourced,
     profit: profitSourced,
     avgSalePrice:
-      soldPurchase.length > 0
-        ? roundMoney(sum(soldPurchase.map((it) => it.soldPrice)) / soldPurchase.length)
+      soldSourced.length > 0
+        ? roundMoney(sum(soldSourced.map((it) => it.soldPrice)) / soldSourced.length)
         : 0,
   };
   const allTimeAll: AllTimeStats = {
-    numberOfSales: soldPurchase.length + soldFree.length,
+    numberOfSales: soldSourced.length + soldFree.length,
     totalSales: roundMoney(allTimeSourced.totalSales + sum(soldFree.map((it) => it.soldPrice))),
     costOfGoods,
     costOfSoldGoods,
@@ -209,10 +208,10 @@ export function computeDashboard(
     feesShipping: feesShippingAll,
     profit: roundMoney(profitSourced + profitFree),
     avgSalePrice:
-      soldPurchase.length + soldFree.length > 0
+      soldSourced.length + soldFree.length > 0
         ? roundMoney(
             (allTimeSourced.totalSales + sum(soldFree.map((it) => it.soldPrice))) /
-              (soldPurchase.length + soldFree.length),
+              (soldSourced.length + soldFree.length),
           )
         : 0,
   };
