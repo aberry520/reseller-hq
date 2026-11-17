@@ -92,13 +92,26 @@ function str_(v) {
   return String(v);
 }
 
-// GET ?token=...  →  { rows: [{ appId, row, item, purchase, estShip,
-//   researchPrice, notes, place, datePurchased, status, dateListed,
-//   dateSold, soldPrice, fees, shipping }] }
+// GET ?token=...[&tab=Free|Expenses]  →  { rows: [...] }
+//   tab=Purchase (default): every data row of the Purchase tab.
+//   tab=Free: every data row of the Free tab (free inventory).
+//   tab=Expenses: every data row of the Expenses tab.
+// The app uses the Free/Expenses reads to refresh the dashboard's local
+// copies — the sheet is the source of truth for those two lists.
 function doGet(e) {
   try {
     var err = checkToken_(e.parameter.token);
     if (err) return json_({ error: err });
+    var tab = e.parameter.tab || 'Purchase';
+    if (tab === 'Free') return json_({ rows: readFree_() });
+    if (tab === 'Expenses') return json_({ rows: readExpenses_() });
+    return json_({ rows: readPurchase_() });
+  } catch (ex) {
+    return json_({ error: String(ex) });
+  }
+}
+
+function readPurchase_() {
     var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
     var lastRow = sheet.getLastRow();
     var rows = [];
@@ -128,10 +141,56 @@ function doGet(e) {
         });
       }
     }
-    return json_({ rows: rows });
-  } catch (ex) {
-    return json_({ error: String(ex) });
+    return rows;
+}
+
+function readFree_() {
+  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Free');
+  var lastRow = sheet.getLastRow();
+  var rows = [];
+  if (lastRow > HEADER_ROW) {
+    var values = sheet.getRange(HEADER_ROW + 1, 1, lastRow - HEADER_ROW, 9).getValues();
+    for (var i = 0; i < values.length; i++) {
+      var r = values[i];
+      var item = str_(r[0]).trim();
+      if (!item) continue;
+      rows.push({
+        row: HEADER_ROW + 1 + i,
+        name: item,
+        box: str_(r[1]),
+        recPrice: num_(r[2]),
+        status: str_(r[3]),
+        dateListed: fmtDate_(r[4]),
+        dateSold: fmtDate_(r[5]),
+        soldPrice: num_(r[6]),
+        fees: num_(r[7]),
+        shipping: num_(r[8])
+      });
+    }
   }
+  return rows;
+}
+
+function readExpenses_() {
+  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Expenses');
+  var lastRow = sheet.getLastRow();
+  var rows = [];
+  if (lastRow > HEADER_ROW) {
+    var values = sheet.getRange(HEADER_ROW + 1, 1, lastRow - HEADER_ROW, 4).getValues();
+    for (var i = 0; i < values.length; i++) {
+      var r = values[i];
+      var name = str_(r[0]).trim();
+      if (!name) continue;
+      rows.push({
+        row: HEADER_ROW + 1 + i,
+        name: name,
+        price: num_(r[1]),
+        date: fmtDate_(r[2]),
+        status: str_(r[3])
+      });
+    }
+  }
+  return rows;
 }
 
 // POST { token, upserts: [{ appId, fields }], assignIds: [{ row, appId }],

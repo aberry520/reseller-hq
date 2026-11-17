@@ -18,10 +18,15 @@
 import { Platform } from 'react-native';
 import * as SQLite from 'expo-sqlite';
 import { SEED_ITEMS } from './seed-data';
+import { FREE_SEED_ITEMS } from './free-seed-data';
+import { EXPENSES_SEED_ITEMS } from './expenses-seed-data';
 import {
   DEFAULT_SETTINGS,
+  Expense,
+  FreeItem,
   Item,
   ItemStatus,
+  normaliseFreeStatus,
   normaliseStatus,
   qrFor,
   Settings,
@@ -47,8 +52,12 @@ const WEB_ITEMS_KEY = 'reseller-hq-items-v1';
 const WEB_SETTINGS_KEY = 'reseller-hq-settings-v1';
 const WEB_TOMBSTONES_KEY = 'reseller-hq-tombstones-v1';
 const WEB_SYNC_STATE_KEY = 'reseller-hq-sync-state-v1';
+const WEB_FREE_ITEMS_KEY = 'reseller-hq-free-items-v1';
+const WEB_EXPENSES_KEY = 'reseller-hq-expenses-v1';
 let webItems: Item[] | null = null;
 let webSettings: Settings | null = null;
+let webFreeItems: FreeItem[] | null = null;
+let webExpenses: Expense[] | null = null;
 
 function webRead(key: string): string | null {
   try {
@@ -111,6 +120,32 @@ function webLoad(): void {
   }
   webItems = loaded ?? SEED_ITEMS.map((s) => seedToItem(s, now));
   if (!loaded) webWrite(WEB_ITEMS_KEY, JSON.stringify(webItems));
+  // Free items + expenses: seeded from the sheet's Free/Expenses tabs; the
+  // dashboard refreshes them from the sheet when sync is configured.
+  const rawFree = webRead(WEB_FREE_ITEMS_KEY);
+  let loadedFree: FreeItem[] | null = null;
+  if (rawFree) {
+    try {
+      const parsed: unknown = JSON.parse(rawFree);
+      if (Array.isArray(parsed) && parsed.length > 0) loadedFree = parsed as FreeItem[];
+    } catch {
+      loadedFree = null;
+    }
+  }
+  webFreeItems = loadedFree ?? [...FREE_SEED_ITEMS];
+  if (!loadedFree) webWrite(WEB_FREE_ITEMS_KEY, JSON.stringify(webFreeItems));
+  const rawExp = webRead(WEB_EXPENSES_KEY);
+  let loadedExp: Expense[] | null = null;
+  if (rawExp) {
+    try {
+      const parsed: unknown = JSON.parse(rawExp);
+      if (Array.isArray(parsed) && parsed.length > 0) loadedExp = parsed as Expense[];
+    } catch {
+      loadedExp = null;
+    }
+  }
+  webExpenses = loadedExp ?? [...EXPENSES_SEED_ITEMS];
+  if (!loadedExp) webWrite(WEB_EXPENSES_KEY, JSON.stringify(webExpenses));
   const rawSettings = webRead(WEB_SETTINGS_KEY);
   if (rawSettings) {
     try {
@@ -184,6 +219,25 @@ export function initDb(): void {
       id TEXT PRIMARY KEY,
       deletedAt TEXT NOT NULL DEFAULT ''
     );
+    CREATE TABLE IF NOT EXISTS free_items (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      box TEXT NOT NULL DEFAULT '',
+      recPrice REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'Draft',
+      dateListed TEXT NOT NULL DEFAULT '',
+      dateSold TEXT NOT NULL DEFAULT '',
+      soldPrice REAL NOT NULL DEFAULT 0,
+      fees REAL NOT NULL DEFAULT 0,
+      shipping REAL NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS expenses (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      price REAL NOT NULL DEFAULT 0,
+      date TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT ''
+    );
   `);
   // Migration for installs seeded before macBidFees existed: add the column
   // (fails harmlessly if it is already there) and backfill it from place.
@@ -239,6 +293,38 @@ export function initDb(): void {
       'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)',
       [key, String(value)],
     );
+  }
+  // Free items + expenses, seeded from the sheet tabs when empty.
+  const freeCount = d.getFirstSync<{ c: number }>('SELECT COUNT(*) AS c FROM free_items');
+  if ((freeCount?.c ?? 0) === 0) {
+    for (const f of FREE_SEED_ITEMS) {
+      d.runSync(
+        `INSERT INTO free_items (id, name, box, recPrice, status, dateListed,
+          dateSold, soldPrice, fees, shipping)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          f.id,
+          f.name,
+          f.box,
+          f.recPrice,
+          f.status,
+          f.dateListed,
+          f.dateSold,
+          f.soldPrice,
+          f.fees,
+          f.shipping,
+        ],
+      );
+    }
+  }
+  const expCount = d.getFirstSync<{ c: number }>('SELECT COUNT(*) AS c FROM expenses');
+  if ((expCount?.c ?? 0) === 0) {
+    for (const e of EXPENSES_SEED_ITEMS) {
+      d.runSync(
+        'INSERT INTO expenses (id, name, price, date, status) VALUES (?, ?, ?, ?, ?)',
+        [e.id, e.name, e.price, e.date, e.status],
+      );
+    }
   }
 }
 
@@ -539,6 +625,68 @@ export function addItem(input: {
     ],
   );
   return item;
+}
+
+// ---------------------------------------------------------------------------
+// Free inventory + expenses (the sheet's Free/Expenses tabs). Read-only in
+// the app for now: the dashboard aggregates them, and a sheet refresh
+// (when sync is configured) replaces the whole local copy with the sheet's
+// current rows — the sheet is the source of truth for these two lists.
+// ---------------------------------------------------------------------------
+
+export function getFreeItems(): FreeItem[] {
+  if (IS_WEB) {
+    webLoad();
+    return [...(webFreeItems as FreeItem[])];
+  }
+  return getDb()
+    .getAllSync<FreeItem>('SELECT * FROM free_items ORDER BY id')
+    .map((r) => ({ ...r, status: normaliseFreeStatus(r.status) }));
+}
+
+export function replaceFreeItems(items: FreeItem[]): void {
+  if (IS_WEB) {
+    webFreeItems = [...items];
+    webWrite(WEB_FREE_ITEMS_KEY, JSON.stringify(webFreeItems));
+    return;
+  }
+  const d = getDb();
+  d.runSync('DELETE FROM free_items');
+  for (const f of items) {
+    d.runSync(
+      `INSERT INTO free_items (id, name, box, recPrice, status, dateListed,
+        dateSold, soldPrice, fees, shipping)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [f.id, f.name, f.box, f.recPrice, f.status, f.dateListed, f.dateSold, f.soldPrice, f.fees, f.shipping],
+    );
+  }
+}
+
+export function getExpenses(): Expense[] {
+  if (IS_WEB) {
+    webLoad();
+    return [...(webExpenses as Expense[])];
+  }
+  return getDb().getAllSync<Expense>('SELECT * FROM expenses ORDER BY id');
+}
+
+export function replaceExpenses(items: Expense[]): void {
+  if (IS_WEB) {
+    webExpenses = [...items];
+    webWrite(WEB_EXPENSES_KEY, JSON.stringify(webExpenses));
+    return;
+  }
+  const d = getDb();
+  d.runSync('DELETE FROM expenses');
+  for (const e of items) {
+    d.runSync('INSERT INTO expenses (id, name, price, date, status) VALUES (?, ?, ?, ?, ?)', [
+      e.id,
+      e.name,
+      e.price,
+      e.date,
+      e.status,
+    ]);
+  }
 }
 
 export function getSettings(): Settings {

@@ -115,6 +115,38 @@ export function qrFor(id: string): string {
   return `reseller://item/${id}`;
 }
 
+// Free inventory (the sheet's Free tab): items Austin got for free, mostly
+// Department 56 buildings. No purchase cost — profit = sold - fees - shipping.
+export type FreeStatus = 'Draft' | 'Listed' | 'Sold' | 'Trash' | 'Return';
+
+export interface FreeItem {
+  id: string; // FR-xxx, by Free-tab row order
+  name: string;
+  box: string; // storage box (A, B, ...)
+  recPrice: number;
+  status: FreeStatus;
+  dateListed: string;
+  dateSold: string;
+  soldPrice: number;
+  fees: number;
+  shipping: number;
+}
+
+// Business expenses (the sheet's Expenses tab).
+export interface Expense {
+  id: string; // EX-xxx
+  name: string;
+  price: number;
+  date: string;
+  status: string;
+}
+
+export function normaliseFreeStatus(raw: string): FreeStatus {
+  const s = (raw || '').trim();
+  if (s === 'Sold' || s === 'Listed' || s === 'Trash' || s === 'Return') return s;
+  return 'Draft';
+}
+
 export function idFromQr(data: string): string | null {
   const m = data.trim().match(/reseller:\/\/item\/(RB-\d+)/i);
   if (m) return m[1].toUpperCase();

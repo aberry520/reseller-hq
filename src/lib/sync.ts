@@ -18,7 +18,7 @@ import {
   sheetRowToPatch,
   SheetRow,
 } from './sync-diff';
-import { Item } from './types';
+import { Expense, FreeItem, Item, normaliseFreeStatus } from './types';
 
 export type { SheetRow } from './sync-diff';
 
@@ -30,6 +30,50 @@ export async function fetchSheetRows(): Promise<SheetRow[]> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Sheet sync failed (HTTP ${res.status}). Check the URL in Settings.`);
   const data = (await res.json()) as { rows?: SheetRow[]; error?: string };
+  if (data.error) throw new Error(`Sheet sync failed: ${data.error}`);
+  if (!Array.isArray(data.rows)) throw new Error('Sheet sync returned an unexpected response.');
+  return data.rows;
+}
+
+// Dashboard refresh: pull the Free and Expenses tabs from the sheet and
+// return them as local items (ids by tab row order — these lists are
+// replaced wholesale, the sheet is their source of truth).
+export async function fetchFreeRows(): Promise<FreeItem[]> {
+  const rows = await fetchTabRows('Free');
+  return (rows as Array<Record<string, unknown>>).map((r, i) => ({
+    id: `FR-${String(i + 1).padStart(3, '0')}`,
+    name: String(r.name ?? ''),
+    box: String(r.box ?? ''),
+    recPrice: Number(r.recPrice ?? 0) || 0,
+    status: normaliseFreeStatus(String(r.status ?? '')),
+    dateListed: String(r.dateListed ?? ''),
+    dateSold: String(r.dateSold ?? ''),
+    soldPrice: Number(r.soldPrice ?? 0) || 0,
+    fees: Number(r.fees ?? 0) || 0,
+    shipping: Number(r.shipping ?? 0) || 0,
+  }));
+}
+
+export async function fetchExpenseRows(): Promise<Expense[]> {
+  const rows = await fetchTabRows('Expenses');
+  return (rows as Array<Record<string, unknown>>).map((r, i) => ({
+    id: `EX-${String(i + 1).padStart(3, '0')}`,
+    name: String(r.name ?? ''),
+    price: Number(r.price ?? 0) || 0,
+    date: String(r.date ?? ''),
+    status: String(r.status ?? ''),
+  }));
+}
+
+async function fetchTabRows(tab: string): Promise<unknown[]> {
+  const { syncUrl, syncToken } = getSettings();
+  if (!syncUrl.trim() || !syncToken.trim()) {
+    throw new Error('Sheet sync URL/token is not set (Settings → Sheet sync).');
+  }
+  const url = `${syncUrl.replace(/\/$/, '')}?token=${encodeURIComponent(syncToken.trim())}&tab=${tab}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Sheet sync failed (HTTP ${res.status}).`);
+  const data = (await res.json()) as { rows?: unknown[]; error?: string };
   if (data.error) throw new Error(`Sheet sync failed: ${data.error}`);
   if (!Array.isArray(data.rows)) throw new Error('Sheet sync returned an unexpected response.');
   return data.rows;
