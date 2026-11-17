@@ -248,11 +248,12 @@ export default function SyncScreen() {
       >
         <Text style={styles.title}>Sheet sync is not set up yet</Text>
         <Text style={styles.body}>
-          The app talks to the sheet through a small script attached to it (sync/sheet-sync.gs in
-          the repo). One-time setup:
+          The app talks to the sheet through a small script attached to it. The code is in the
+          template's Apps Script tab — no repo access needed. One-time setup:
         </Text>
         <Text style={styles.body}>
-          1. In the sheet: Extensions → Apps Script, paste in sheet-sync.gs.{'\n'}
+          1. In the template (or your copy): Apps Script tab, select the whole of column A and
+          copy it. In your sheet: Extensions → Apps Script, delete everything there, paste.{'\n'}
           2. Project Settings → Script Properties → add SYNC_TOKEN (pick a long random string).{'\n'}
           3. Deploy → New deployment → Web app, Execute as Me, Who has access Anyone. Copy the URL.{'\n'}
           4. Paste the URL and the same token into Settings below.
