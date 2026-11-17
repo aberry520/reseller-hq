@@ -766,13 +766,20 @@ export default function ItemScreen() {
       animationType="slide"
       onRequestClose={() => setSoldModalVisible(false)}
     >
-      <View style={[styles.modalWrap, { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xl }]}>
+      <ScrollView
+        style={styles.modalWrap}
+        contentContainerStyle={{
+          paddingTop: insets.top + spacing.lg,
+          paddingBottom: insets.bottom + spacing.xl,
+        }}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.modalTitle}>Mark as sold</Text>
         <Text style={styles.note}>
           Enter what it actually sold for — the item card will show these sold details instead of
           the suggested price.
         </Text>
-        <View style={styles.moneyField}>
+        <View style={styles.modalField}>
           <Text style={styles.fieldLabel}>Sold price</Text>
           <TextInput
             style={styles.input}
@@ -784,7 +791,7 @@ export default function ItemScreen() {
             autoFocus
           />
         </View>
-        <View style={styles.moneyField}>
+        <View style={styles.modalField}>
           <Text style={styles.fieldLabel}>Fees paid</Text>
           <TextInput
             style={styles.input}
@@ -795,7 +802,7 @@ export default function ItemScreen() {
             returnKeyType="done"
           />
         </View>
-        <View style={styles.moneyField}>
+        <View style={styles.modalField}>
           <Text style={styles.fieldLabel}>Shipping paid</Text>
           <TextInput
             style={styles.input}
@@ -806,7 +813,7 @@ export default function ItemScreen() {
             returnKeyType="done"
           />
         </View>
-        <View style={styles.moneyField}>
+        <View style={styles.modalField}>
           <Text style={styles.fieldLabel}>Date sold</Text>
           <TextInput
             style={styles.input}
@@ -837,7 +844,7 @@ export default function ItemScreen() {
             <Text style={styles.btnText}>Cancel</Text>
           </Pressable>
         </View>
-      </View>
+      </ScrollView>
     </Modal>
     </>
   );
@@ -936,6 +943,9 @@ const styles = StyleSheet.create({
   meta: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 6 },
   modalTitle: { color: colors.text, fontSize: 22, fontWeight: '700', lineHeight: 28, marginBottom: spacing.sm },
   modalWrap: { backgroundColor: colors.background, flex: 1, paddingHorizontal: spacing.lg },
+  // Plain stacked field for the sold modal — NOT moneyField, whose
+  // flexGrow: 1 stretches each field to fill the screen in a column.
+  modalField: { marginTop: spacing.md },
   cancelBtn: { backgroundColor: colors.muted },
   notFound: { paddingHorizontal: spacing.lg },
   notFoundText: { color: colors.text, fontSize: 16 },
