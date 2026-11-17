@@ -8,8 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 
 type Tool = {
-  href: '/calculator' | '/scan' | '/labels';
-  icon: 'calculator-outline' | 'scan-outline' | 'pricetag-outline';
+  href: '/calculator' | '/scan' | '/labels' | '/sync';
+  icon: 'calculator-outline' | 'scan-outline' | 'pricetag-outline' | 'sync-outline';
   title: string;
   desc: string;
 };
@@ -32,6 +32,12 @@ const TOOLS: Tool[] = [
     icon: 'pricetag-outline',
     title: 'QR labels',
     desc: 'Print QR labels for your items on the Zebra printer.',
+  },
+  {
+    href: '/sync',
+    icon: 'sync-outline',
+    title: 'Sheet sync',
+    desc: 'Compare the app with the Purchase sheet and apply only what you approve.',
   },
 ];
 

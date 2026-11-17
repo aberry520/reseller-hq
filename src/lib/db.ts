@@ -1,6 +1,9 @@
 // Local-first storage. Works offline in the garage.
 // First run: seeds from src/lib/seed-data.ts (generated from seed-purchase.csv).
-// Google Sheets is the backup/export source, NOT a live sync in v1.
+// Google Sheets sync (two-way, review-first) lives in src/lib/sync.ts and
+// talks to the Apps Script endpoint in sync/sheet-sync.gs. The sheet is the
+// shared source of truth between the app on this device and the sheet itself;
+// the app's photos stay local-only (the sheet has no photo column).
 //
 // Two backends, same sync API (every screen calls these synchronously):
 //   - Native (iOS/Android): expo-sqlite, database file reseller.db.
@@ -42,6 +45,8 @@ export function getDb(): SQLite.SQLiteDatabase {
 
 const WEB_ITEMS_KEY = 'reseller-hq-items-v1';
 const WEB_SETTINGS_KEY = 'reseller-hq-settings-v1';
+const WEB_TOMBSTONES_KEY = 'reseller-hq-tombstones-v1';
+const WEB_SYNC_STATE_KEY = 'reseller-hq-sync-state-v1';
 let webItems: Item[] | null = null;
 let webSettings: Settings | null = null;
 
@@ -174,6 +179,10 @@ export function initDb(): void {
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS tombstones (
+      id TEXT PRIMARY KEY,
+      deletedAt TEXT NOT NULL DEFAULT ''
     );
   `);
   // Migration for installs seeded before macBidFees existed: add the column
@@ -341,6 +350,7 @@ export function updateItem(id: string, patch: Partial<Item>): void {
 }
 
 export function deleteItem(id: string): void {
+  recordDeletedId(id);
   if (IS_WEB) {
     webLoad();
     webItems = (webItems as Item[]).filter((it) => it.id !== id);
@@ -348,6 +358,95 @@ export function deleteItem(id: string): void {
     return;
   }
   getDb().runSync('DELETE FROM items WHERE id = ?', [id]);
+}
+
+// ---------------------------------------------------------------------------
+// Sync bookkeeping: tombstones (ids deleted in the app) and sync state
+// (which appIds were in sync with the sheet at the last successful apply).
+// Tombstones let the sync tell "deleted in the app" (→ mark Trash in the
+// sheet) apart from "never synced" (→ add to the sheet). Sync state lets it
+// tell "new in the app" apart from "row removed from the sheet".
+// ---------------------------------------------------------------------------
+
+export function recordDeletedId(id: string): void {
+  if (IS_WEB) {
+    const ids = getDeletedIds();
+    if (!ids.includes(id)) {
+      ids.push(id);
+      webWrite(WEB_TOMBSTONES_KEY, JSON.stringify(ids));
+    }
+    return;
+  }
+  getDb().runSync(
+    'INSERT OR IGNORE INTO tombstones (id, deletedAt) VALUES (?, ?)',
+    [id, new Date().toISOString()],
+  );
+}
+
+export function getDeletedIds(): string[] {
+  if (IS_WEB) {
+    try {
+      const raw = webRead(WEB_TOMBSTONES_KEY);
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? (parsed as string[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  return getDb()
+    .getAllSync<{ id: string }>('SELECT id FROM tombstones')
+    .map((r) => r.id);
+}
+
+export function clearDeletedIds(ids: string[]): void {
+  if (ids.length === 0) return;
+  if (IS_WEB) {
+    const remaining = getDeletedIds().filter((id) => !ids.includes(id));
+    webWrite(WEB_TOMBSTONES_KEY, JSON.stringify(remaining));
+    return;
+  }
+  const d = getDb();
+  for (const id of ids) d.runSync('DELETE FROM tombstones WHERE id = ?', [id]);
+}
+
+export interface SyncState {
+  ids: string[]; // appIds present on both sides after the last successful apply
+  at: string; // ISO timestamp of that apply
+}
+
+export function getSyncState(): SyncState | null {
+  if (IS_WEB) {
+    try {
+      const raw = webRead(WEB_SYNC_STATE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as SyncState;
+      return Array.isArray(parsed.ids) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  const row = getDb().getFirstSync<{ value: string }>(
+    "SELECT value FROM settings WHERE key = '__syncState'",
+  );
+  if (!row) return null;
+  try {
+    const parsed = JSON.parse(row.value) as SyncState;
+    return Array.isArray(parsed.ids) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveSyncState(ids: string[], at: string): void {
+  const value = JSON.stringify({ ids, at });
+  if (IS_WEB) {
+    webWrite(WEB_SYNC_STATE_KEY, value);
+    return;
+  }
+  getDb().runSync(
+    "INSERT INTO settings (key, value) VALUES ('__syncState', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+    [value],
+  );
 }
 
 export function setStatus(id: string, status: ItemStatus): void {
@@ -457,6 +556,8 @@ export function getSettings(): Settings {
     if (r.key === 'ebayFeePct') out.ebayFeePct = parseFloat(r.value) || 0.136;
     if (r.key === 'targetMarginPct') out.targetMarginPct = parseFloat(r.value) || 0.3;
     if (r.key === 'salesTaxPct') out.salesTaxPct = parseFloat(r.value) || 0.07;
+    if (r.key === 'syncUrl') out.syncUrl = r.value;
+    if (r.key === 'syncToken') out.syncToken = r.value;
   }
   return out;
 }

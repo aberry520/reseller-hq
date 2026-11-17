@@ -35,6 +35,7 @@
     "ios": "expo start --ios",
     "start": "expo start",
     "test:pricing": "node scripts/verify-pricing.mjs",
+    "test:sync-diff": "node scripts/verify-sync-diff.mjs",
     "web": "expo start --web"
   },
   "version": "1.0.0"

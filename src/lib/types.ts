@@ -82,6 +82,8 @@ export interface Settings {
   ebayFeePct: number; // 0.136
   targetMarginPct: number; // 0.30
   salesTaxPct: number; // 0.07 for Anderson, SC
+  syncUrl: string; // Google Apps Script web app URL for sheet sync (blank = off)
+  syncToken: string; // SYNC_TOKEN script property — the sync password
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -90,6 +92,8 @@ export const DEFAULT_SETTINGS: Settings = {
   ebayFeePct: 0.136,
   targetMarginPct: 0.3,
   salesTaxPct: 0.07,
+  syncUrl: '',
+  syncToken: '',
 };
 
 export function normaliseStatus(raw: string): ItemStatus {

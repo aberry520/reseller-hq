@@ -80,6 +80,37 @@ export default function SettingsScreen() {
         returnKeyType="done"
       />
 
+      <Text style={styles.label}>Sheet sync URL</Text>
+      <TextInput
+        style={styles.input}
+        value={s.syncUrl}
+        onChangeText={(v) => setS({ ...s, syncUrl: v })}
+        placeholder="https://script.google.com/macros/s/.../exec"
+        autoCapitalize="none"
+        autoCorrect={false}
+        returnKeyType="next"
+      />
+      <Text style={styles.note}>
+        The Web app URL from deploying sync/sheet-sync.gs (Extensions → Apps Script in the
+        sheet). Blank = sync off.
+      </Text>
+
+      <Text style={styles.label}>Sheet sync token</Text>
+      <TextInput
+        style={styles.input}
+        value={s.syncToken}
+        onChangeText={(v) => setS({ ...s, syncToken: v })}
+        placeholder="The SYNC_TOKEN script property value"
+        autoCapitalize="none"
+        autoCorrect={false}
+        secureTextEntry
+        returnKeyType="next"
+      />
+      <Text style={styles.note}>
+        The password the app sends with every sync request. Keep it private — anyone with the
+        URL and this token can change the sheet.
+      </Text>
+
       <Text style={styles.label}>eBay</Text>
       <Text style={styles.note}>{ebay.message}</Text>
 
