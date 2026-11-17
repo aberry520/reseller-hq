@@ -5,9 +5,11 @@ import * as FileSystem from 'expo-file-system/legacy';
 import QRCode from 'react-native-qrcode-svg';
 import { useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAllItems } from '../src/lib/db';
 import { cleanName } from '../src/lib/listing';
 import { labelsHtml, zplForItems } from '../src/lib/zpl';
+import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
 import type { Item } from '../src/lib/types';
 
 /**
@@ -19,6 +21,7 @@ import type { Item } from '../src/lib/types';
  *   - Export PDF: a printable sheet of the same labels, for a normal printer.
  */
 export default function LabelsScreen() {
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<Item[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [zplPath, setZplPath] = useState('');
@@ -68,7 +71,7 @@ export default function LabelsScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
       <Text style={styles.summary}>
         {chosen.length} selected · defaults to Draft + Unlisted ({items.filter((i) => i.status === 'Draft' || i.status === 'Unlisted').length} items)
       </Text>
@@ -87,10 +90,11 @@ export default function LabelsScreen() {
       <FlatList
         data={items}
         keyExtractor={(it) => it.id}
+        contentContainerStyle={{ paddingBottom: insets.bottom + spacing.lg }}
         renderItem={({ item }) => {
           const on = selected.has(item.id);
           return (
-            <Pressable style={styles.row} onPress={() => toggle(item.id)}>
+            <Pressable style={styles.row} onPress={() => toggle(item.id)} hitSlop={{ top: 4, bottom: 4 }}>
               <Text style={styles.check}>{on ? '☑' : '☐'}</Text>
               <View style={styles.rowMain}>
                 <Text style={styles.rowName} numberOfLines={1}>
@@ -111,27 +115,31 @@ export default function LabelsScreen() {
 
 const styles = StyleSheet.create({
   btn: {
-    backgroundColor: '#0969da',
-    borderRadius: 8,
-    marginRight: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: minTouchHeight,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
-  btnRow: { flexDirection: 'row', padding: 12 },
-  btnText: { color: '#fff', fontWeight: '700' },
-  check: { fontSize: 20, marginRight: 8 },
-  container: { backgroundColor: '#fff', flex: 1 },
-  note: { color: '#656d76', fontSize: 12, paddingHorizontal: 12, paddingBottom: 6 },
+  btnRow: { flexDirection: 'row', gap: spacing.sm, padding: spacing.lg },
+  btnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  check: { fontSize: 22, marginRight: spacing.sm },
+  container: { backgroundColor: colors.background, flex: 1 },
+  note: { color: colors.muted, fontSize: 13, lineHeight: 18, paddingBottom: 6, paddingHorizontal: spacing.lg },
   row: {
     alignItems: 'center',
-    borderBottomColor: '#eaeef2',
+    borderBottomColor: colors.divider,
     borderBottomWidth: 1,
     flexDirection: 'row',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    minHeight: 64,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
-  rowMain: { flex: 1, marginRight: 8 },
-  rowMeta: { color: '#656d76', fontSize: 12 },
-  rowName: { fontSize: 14, fontWeight: '600' },
-  summary: { fontWeight: '600', paddingHorizontal: 12, paddingTop: 12 },
+  rowMain: { flex: 1, marginRight: spacing.sm },
+  rowMeta: { color: colors.muted, fontSize: 13, marginTop: 2 },
+  rowName: { color: colors.text, fontSize: 16, fontWeight: '600' },
+  summary: { color: colors.text, fontSize: 14, fontWeight: '600', lineHeight: 20, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
 });

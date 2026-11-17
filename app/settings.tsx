@@ -2,11 +2,14 @@ import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSettings, saveSettings } from '../src/lib/db';
 import { getEbayStatus } from '../src/services/ebay';
+import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
 import type { Settings } from '../src/lib/types';
 
 export default function SettingsScreen() {
+  const insets = useSafeAreaInsets();
   const [s, setS] = useState<Settings | null>(null);
 
   useFocusEffect(
@@ -24,7 +27,14 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xl },
+      ]}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={styles.label}>Background remover URL</Text>
       <TextInput
         style={styles.input}
@@ -33,6 +43,7 @@ export default function SettingsScreen() {
         placeholder="http://192.168.1.50:8000 (leave blank to skip)"
         autoCapitalize="none"
         autoCorrect={false}
+        returnKeyType="next"
       />
       <Text style={styles.note}>
         The backend/ folder in this repo runs the remover on your laptop. Your phone must be on
@@ -40,7 +51,7 @@ export default function SettingsScreen() {
       </Text>
 
       <Text style={styles.label}>Warehouse</Text>
-      <TextInput style={styles.input} value={s.warehouse} onChangeText={(v) => setS({ ...s, warehouse: v })} />
+      <TextInput style={styles.input} value={s.warehouse} onChangeText={(v) => setS({ ...s, warehouse: v })} returnKeyType="next" />
 
       <Text style={styles.label}>eBay fee % (13.6 = 0.136)</Text>
       <TextInput
@@ -48,6 +59,7 @@ export default function SettingsScreen() {
         value={String(s.ebayFeePct)}
         onChangeText={(v) => setS({ ...s, ebayFeePct: parseFloat(v) || 0.136 })}
         keyboardType="decimal-pad"
+        returnKeyType="next"
       />
 
       <Text style={styles.label}>Target margin % (30 = 0.30)</Text>
@@ -56,6 +68,7 @@ export default function SettingsScreen() {
         value={String(s.targetMarginPct)}
         onChangeText={(v) => setS({ ...s, targetMarginPct: parseFloat(v) || 0.3 })}
         keyboardType="decimal-pad"
+        returnKeyType="next"
       />
 
       <Text style={styles.label}>MAC.BID sales tax % — Anderson (7 = 0.07)</Text>
@@ -64,6 +77,7 @@ export default function SettingsScreen() {
         value={String(s.salesTaxPct)}
         onChangeText={(v) => setS({ ...s, salesTaxPct: parseFloat(v) || 0.07 })}
         keyboardType="decimal-pad"
+        returnKeyType="done"
       />
 
       <Text style={styles.label}>eBay</Text>
@@ -78,22 +92,28 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   btn: {
-    backgroundColor: '#0969da',
-    borderRadius: 8,
-    marginTop: 16,
-    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    justifyContent: 'center',
+    marginTop: 20,
+    minHeight: 52,
+    paddingVertical: spacing.md,
   },
-  btnText: { color: '#fff', fontWeight: '700', textAlign: 'center' },
-  container: { backgroundColor: '#fff', flex: 1 },
-  content: { padding: 12 },
+  btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
+  container: { backgroundColor: colors.background, flex: 1 },
+  content: { paddingHorizontal: spacing.lg },
   input: {
-    borderColor: '#d0d7de',
-    borderRadius: 8,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    marginTop: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    color: colors.text,
+    fontSize: 16,
+    marginTop: spacing.xs,
+    minHeight: minTouchHeight,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
-  label: { fontWeight: '700', marginTop: 12 },
-  note: { color: '#656d76', fontSize: 13, marginTop: 4 },
+  label: { color: colors.text, fontSize: 15, fontWeight: '700', marginTop: spacing.lg },
+  note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.xs },
 });

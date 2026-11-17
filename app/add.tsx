@@ -1,9 +1,12 @@
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { addItem } from '../src/lib/db';
+import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
 
 export default function AddScreen() {
+  const insets = useSafeAreaInsets();
   const [name, setName] = useState('');
   const [purchase, setPurchase] = useState('');
   const [estShip, setEstShip] = useState('10');
@@ -29,42 +32,56 @@ export default function AddScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xl },
+      ]}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={styles.label}>Item name</Text>
-      <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="e.g. Klymit Static V Sleeping Pad" />
+      <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="e.g. Klymit Static V Sleeping Pad" returnKeyType="next" />
       <Text style={styles.label}>Purchase / winning bid ($)</Text>
-      <TextInput style={styles.input} value={purchase} onChangeText={setPurchase} keyboardType="decimal-pad" placeholder="0.00" />
+      <TextInput style={styles.input} value={purchase} onChangeText={setPurchase} keyboardType="decimal-pad" placeholder="0.00" returnKeyType="next" />
       <Text style={styles.label}>Est. shipping ($)</Text>
-      <TextInput style={styles.input} value={estShip} onChangeText={setEstShip} keyboardType="decimal-pad" />
+      <TextInput style={styles.input} value={estShip} onChangeText={setEstShip} keyboardType="decimal-pad" returnKeyType="next" />
       <Text style={styles.label}>Place of purchase</Text>
-      <TextInput style={styles.input} value={place} onChangeText={setPlace} />
+      <TextInput style={styles.input} value={place} onChangeText={setPlace} returnKeyType="next" />
       <Text style={styles.label}>Date purchased</Text>
-      <TextInput style={styles.input} value={datePurchased} onChangeText={setDatePurchased} />
+      <TextInput style={styles.input} value={datePurchased} onChangeText={setDatePurchased} returnKeyType="next" />
       <Text style={styles.label}>Notes</Text>
       <TextInput style={styles.input} value={notes} onChangeText={setNotes} multiline />
       <Pressable style={styles.btn} onPress={save}>
         <Text style={styles.btnText}>Save item</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   btn: {
-    backgroundColor: '#0969da',
-    borderRadius: 8,
-    marginTop: 16,
-    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    justifyContent: 'center',
+    marginTop: 20,
+    minHeight: 52,
+    paddingVertical: spacing.md,
   },
-  btnText: { color: '#fff', fontWeight: '700', textAlign: 'center' },
-  container: { backgroundColor: '#fff', flex: 1, padding: 12 },
+  btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
+  container: { backgroundColor: colors.background, flex: 1 },
+  content: { paddingHorizontal: spacing.lg },
   input: {
-    borderColor: '#d0d7de',
-    borderRadius: 8,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    marginTop: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    color: colors.text,
+    fontSize: 16,
+    marginTop: spacing.xs,
+    minHeight: minTouchHeight,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
-  label: { fontWeight: '700', marginTop: 12 },
+  label: { color: colors.text, fontSize: 15, fontWeight: '700', marginTop: spacing.lg },
 });

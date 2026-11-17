@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { getItem, getSettings } from '../../src/lib/db';
 import { cleanName, ebayDraftText, ebayTitle, facebookDraftText, facebookTitle } from '../../src/lib/listing';
@@ -11,16 +12,18 @@ import {
   suggestedEbayPrice,
 } from '../../src/lib/pricing';
 import { getEbayStatus } from '../../src/services/ebay';
+import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 
 export default function ListingScreen() {
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [copied, setCopied] = useState('');
   const item = id ? getItem(id) : null;
 
   if (!item) {
     return (
-      <View style={styles.container}>
-        <Text>Item not found: {id}</Text>
+      <View style={[styles.container, styles.notFound, { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.lg }]}>
+        <Text style={styles.notFoundText}>Item not found: {id}</Text>
       </View>
     );
   }
@@ -45,7 +48,13 @@ export default function ListingScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xl },
+      ]}
+    >
       <Text style={styles.title}>{cleanName(item.name)}</Text>
       <Text style={styles.meta}>
         {item.id} · all-in {formatMoney(allIn)} · est. ship {formatMoney(item.estShip)}
@@ -95,25 +104,30 @@ export default function ListingScreen() {
 
 const styles = StyleSheet.create({
   btn: {
-    backgroundColor: '#0969da',
-    borderRadius: 8,
-    marginTop: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    justifyContent: 'center',
+    marginTop: spacing.md,
+    minHeight: minTouchHeight,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
-  btnText: { color: '#fff', fontWeight: '700', textAlign: 'center' },
+  btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
   card: {
-    backgroundColor: '#f6f8fa',
-    borderRadius: 10,
-    marginTop: 12,
-    padding: 12,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    marginTop: spacing.lg,
+    padding: spacing.lg,
   },
-  cardTitle: { fontSize: 15, fontWeight: '700', marginBottom: 6 },
-  container: { backgroundColor: '#fff', flex: 1 },
-  content: { padding: 12 },
-  draft: { fontSize: 13, lineHeight: 18, marginTop: 6 },
-  line: { fontSize: 14, marginTop: 4 },
-  meta: { color: '#656d76', fontSize: 13, marginTop: 4 },
-  note: { color: '#656d76', fontSize: 13, marginTop: 8 },
-  title: { fontSize: 20, fontWeight: '700' },
+  cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: spacing.sm },
+  container: { backgroundColor: colors.background, flex: 1 },
+  content: { paddingHorizontal: spacing.lg },
+  draft: { color: colors.text, fontSize: 14, lineHeight: 20, marginTop: 6 },
+  line: { color: colors.text, fontSize: 15, lineHeight: 21, marginTop: 6 },
+  meta: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 6 },
+  notFound: { paddingHorizontal: spacing.lg },
+  notFoundText: { color: colors.text, fontSize: 16 },
+  note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.sm },
+  title: { color: colors.text, fontSize: 22, fontWeight: '700', lineHeight: 28 },
 });

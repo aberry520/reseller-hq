@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Link, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import QRCode from 'react-native-qrcode-svg';
 import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
@@ -26,9 +27,11 @@ import {
   suggestedEbayPrice,
 } from '../../src/lib/pricing';
 import { removeBackground } from '../../src/services/bg-remover';
+import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 import type { Item } from '../../src/lib/types';
 
 export default function ItemScreen() {
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [item, setItem] = useState<Item | null>(null);
   const [location, setLocation] = useState('');
@@ -46,8 +49,8 @@ export default function ItemScreen() {
 
   if (!item) {
     return (
-      <View style={styles.container}>
-        <Text>Item not found: {id}</Text>
+      <View style={[styles.container, styles.notFound, { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.lg }]}>
+        <Text style={styles.notFoundText}>Item not found: {id}</Text>
       </View>
     );
   }
@@ -110,7 +113,14 @@ export default function ItemScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xl },
+      ]}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={styles.title}>{cleanName(item.name)}</Text>
       <Text style={styles.meta}>
         {item.id} · {item.status} · {item.place || 'no source'} · bought{' '}
@@ -158,10 +168,10 @@ export default function ItemScreen() {
         {bgNote !== '' && <Text style={styles.note}>{bgNote}</Text>}
         {busy && <Text style={styles.note}>Removing background…</Text>}
         <View style={styles.btnRow}>
-          <Pressable style={styles.btn} onPress={() => void takePhoto(true)}>
+          <Pressable style={styles.btn} onPress={() => void takePhoto(true)} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
             <Text style={styles.btnText}>Take photo</Text>
           </Pressable>
-          <Pressable style={styles.btn} onPress={() => void takePhoto(false)}>
+          <Pressable style={styles.btn} onPress={() => void takePhoto(false)} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
             <Text style={styles.btnText}>Add from library</Text>
           </Pressable>
         </View>
@@ -174,6 +184,7 @@ export default function ItemScreen() {
           placeholder="Shelf, bin, garage…"
           value={location}
           onChangeText={setLocation}
+          returnKeyType="done"
         />
         <Pressable style={styles.btn} onPress={saveLocation}>
           <Text style={styles.btnText}>Save location</Text>
@@ -216,39 +227,46 @@ export default function ItemScreen() {
 }
 
 const styles = StyleSheet.create({
-  bigBtn: { marginBottom: 24, marginTop: 4, paddingVertical: 12 },
+  bigBtn: { marginBottom: spacing.sm, marginTop: spacing.lg, paddingVertical: 14 },
   btn: {
-    backgroundColor: '#0969da',
-    borderRadius: 8,
-    marginRight: 8,
-    marginTop: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+    marginTop: spacing.sm,
+    minHeight: minTouchHeight,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   btnRow: { flexDirection: 'row', flexWrap: 'wrap' },
-  btnText: { color: '#fff', fontWeight: '700' },
+  btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   card: {
-    backgroundColor: '#f6f8fa',
-    borderRadius: 10,
-    marginTop: 12,
-    padding: 12,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    marginTop: spacing.lg,
+    padding: spacing.lg,
   },
-  cardTitle: { fontSize: 15, fontWeight: '700', marginBottom: 6 },
-  container: { backgroundColor: '#fff', flex: 1 },
-  content: { padding: 12 },
-  fail: { color: '#cf222e', fontWeight: '700' },
+  cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: spacing.sm },
+  container: { backgroundColor: colors.background, flex: 1 },
+  content: { paddingHorizontal: spacing.lg },
+  fail: { color: colors.danger, fontWeight: '700' },
   input: {
     backgroundColor: '#fff',
-    borderColor: '#d0d7de',
-    borderRadius: 8,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    fontSize: 16,
+    minHeight: minTouchHeight,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
-  line: { fontSize: 14, marginTop: 4 },
-  meta: { color: '#656d76', fontSize: 13, marginTop: 4 },
-  note: { color: '#656d76', fontSize: 13, marginTop: 6 },
-  pass: { color: '#1a7f37', fontWeight: '700' },
-  photo: { borderRadius: 8, height: 220, marginTop: 8, width: '100%' },
-  title: { fontSize: 20, fontWeight: '700' },
+  line: { color: colors.text, fontSize: 15, lineHeight: 21, marginTop: 6 },
+  meta: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 6 },
+  notFound: { paddingHorizontal: spacing.lg },
+  notFoundText: { color: colors.text, fontSize: 16 },
+  note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.sm },
+  pass: { color: colors.success, fontWeight: '700' },
+  photo: { borderRadius: radius.sm, height: 240, marginTop: spacing.sm, width: '100%' },
+  title: { color: colors.text, fontSize: 22, fontWeight: '700', lineHeight: 28 },
 });

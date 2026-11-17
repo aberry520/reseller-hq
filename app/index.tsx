@@ -9,9 +9,11 @@ import {
 } from 'react-native';
 import { Link, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAllItems, getCounts } from '../src/lib/db';
 import { formatMoney } from '../src/lib/pricing';
 import { cleanName } from '../src/lib/listing';
+import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
 import type { Item, ItemStatus } from '../src/lib/types';
 
 type Filter = 'All' | 'To List' | 'Listed' | 'Sold' | 'Draft' | 'Trash';
@@ -36,6 +38,7 @@ function matchesFilter(item: Item, filter: Filter): boolean {
 }
 
 export default function InventoryScreen() {
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<Item[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [query, setQuery] = useState('');
@@ -60,7 +63,7 @@ export default function InventoryScreen() {
   const toList = (counts['Draft'] ?? 0) + (counts['Unlisted'] ?? 0);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
       <View style={styles.summary}>
         <Text style={styles.summaryText}>
           {items.length} items · {toList} to list · {counts['Listed'] ?? 0} listed ·{' '}
@@ -73,6 +76,8 @@ export default function InventoryScreen() {
         value={query}
         onChangeText={setQuery}
         autoCapitalize="none"
+        returnKeyType="search"
+        clearButtonMode="while-editing"
       />
       <View style={styles.chips}>
         {FILTERS.map((f) => (
@@ -80,6 +85,7 @@ export default function InventoryScreen() {
             key={f}
             style={[styles.chip, filter === f && styles.chipActive]}
             onPress={() => setFilter(f)}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
           >
             <Text style={[styles.chipText, filter === f && styles.chipTextActive]}>{f}</Text>
           </Pressable>
@@ -88,10 +94,12 @@ export default function InventoryScreen() {
       <FlatList
         data={filtered}
         keyExtractor={(it) => it.id}
+        contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
         ListEmptyComponent={<Text style={styles.empty}>No items match this filter.</Text>}
         renderItem={({ item }) => (
           <Link href={`/item/${item.id}`} asChild>
-            <Pressable style={styles.row}>
+            <Pressable style={styles.row} hitSlop={{ top: 4, bottom: 4 }}>
               <View style={styles.rowMain}>
                 <Text style={styles.rowName} numberOfLines={2}>
                   {cleanName(item.name)}
@@ -114,7 +122,7 @@ export default function InventoryScreen() {
           </Link>
         )}
       />
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
         <Link href="/scan" asChild>
           <Pressable style={styles.footerBtn}>
             <Text style={styles.footerBtnText}>Scan QR</Text>
@@ -144,61 +152,73 @@ const styles = StyleSheet.create({
   badge: {
     borderRadius: 10,
     color: '#fff',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     overflow: 'hidden',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  chip: {
-    backgroundColor: '#eaeef2',
-    borderRadius: 14,
-    marginBottom: 6,
-    marginRight: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  chipActive: { backgroundColor: '#0969da' },
-  chipText: { color: '#1f2328', fontSize: 13, fontWeight: '600' },
+  chip: {
+    alignItems: 'center',
+    backgroundColor: colors.chip,
+    borderRadius: 22,
+    justifyContent: 'center',
+    marginBottom: 6,
+    marginRight: 6,
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
+  },
+  chipActive: { backgroundColor: colors.primary },
+  chipText: { color: colors.text, fontSize: 14, fontWeight: '600' },
   chipTextActive: { color: '#fff' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, paddingTop: 8 },
-  container: { backgroundColor: '#fff', flex: 1 },
-  empty: { color: '#656d76', marginTop: 24, textAlign: 'center' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  container: { backgroundColor: colors.background, flex: 1 },
+  empty: { color: colors.muted, fontSize: 15, marginTop: spacing.xl, textAlign: 'center' },
   footer: {
-    borderTopColor: '#d0d7de',
+    borderTopColor: colors.border,
     borderTopWidth: 1,
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 10,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
   },
   footerBtn: {
-    backgroundColor: '#0969da',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: minTouchHeight,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
   },
-  footerBtnText: { color: '#fff', fontWeight: '700' },
+  footerBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  listContent: { paddingBottom: spacing.md },
   row: {
     alignItems: 'center',
-    borderBottomColor: '#eaeef2',
+    borderBottomColor: colors.divider,
     borderBottomWidth: 1,
     flexDirection: 'row',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    minHeight: 68,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 14,
   },
-  rowMain: { flex: 1, marginRight: 8 },
-  rowMeta: { color: '#656d76', fontSize: 12, marginTop: 2 },
-  rowName: { fontSize: 15, fontWeight: '600' },
+  rowMain: { flex: 1, marginRight: spacing.sm },
+  rowMeta: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.xs },
+  rowName: { color: colors.text, fontSize: 17, fontWeight: '600', lineHeight: 22 },
   search: {
-    backgroundColor: '#f6f8fa',
-    borderColor: '#d0d7de',
-    borderRadius: 8,
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    marginHorizontal: 12,
-    marginTop: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    fontSize: 16,
+    marginHorizontal: spacing.lg,
+    marginTop: 10,
+    minHeight: minTouchHeight,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
-  summary: { backgroundColor: '#f6f8fa', paddingHorizontal: 12, paddingVertical: 8 },
-  summaryText: { fontSize: 13, fontWeight: '600' },
+  summary: { backgroundColor: colors.card, paddingHorizontal: spacing.lg, paddingVertical: 10 },
+  summaryText: { color: colors.text, fontSize: 14, fontWeight: '600', lineHeight: 20 },
 });
