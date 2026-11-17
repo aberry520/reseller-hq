@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -14,7 +14,6 @@ import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import QRCode from 'react-native-qrcode-svg';
 import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
 import { cleanName } from '../../src/lib/listing';
 import {
@@ -31,6 +30,23 @@ import { removeBackground } from '../../src/services/bg-remover';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 import type { Item } from '../../src/lib/types';
 
+const ALL_STATUSES: Item['status'][] = [
+  'Draft',
+  'Unlisted',
+  'Listed',
+  'Sold',
+  'Trash',
+  'Return',
+  'Trash Return',
+];
+
+const parseMoney = (s: string): number => {
+  const v = parseFloat(s.replace(/[^0-9.]/g, ''));
+  return Number.isFinite(v) ? v : 0;
+};
+
+const moneyStr = (n: number): string => (n > 0 ? String(n) : '');
+
 export default function ItemScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -38,6 +54,25 @@ export default function ItemScreen() {
   const [location, setLocation] = useState('');
   const [bgNote, setBgNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [statusNote, setStatusNote] = useState('');
+  const [costsNote, setCostsNote] = useState('');
+  // Editable money fields, mirroring the spreadsheet columns.
+  const [cost, setCost] = useState('');
+  const [estShipStr, setEstShipStr] = useState('');
+  const [soldStr, setSoldStr] = useState('');
+  const [feesStr, setFeesStr] = useState('');
+  const [shipStr, setShipStr] = useState('');
+
+  // Fill the money fields when a different item is opened.
+  useEffect(() => {
+    if (!item) return;
+    setCost(moneyStr(item.purchase));
+    setEstShipStr(moneyStr(item.estShip));
+    setSoldStr(moneyStr(item.soldPrice));
+    setFeesStr(moneyStr(item.fees));
+    setShipStr(moneyStr(item.shipping));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item?.id]);
 
   const refresh = useCallback(() => {
     if (!id) return;
@@ -72,6 +107,15 @@ export default function ItemScreen() {
   const marginAtSuggested = ebayMargin(suggested, allIn, item.estShip, settings.ebayFeePct);
   const profitAtSuggested = ebayProfit(suggested, allIn, item.estShip, settings.ebayFeePct);
   const ok = passesMargin(suggested, allIn, item.estShip, settings.ebayFeePct, settings.targetMarginPct);
+
+  // Live preview from the Costs & sale fields as they are typed.
+  const previewPurchase = parseMoney(cost);
+  const previewSold = parseMoney(soldStr);
+  const previewFees = parseMoney(feesStr);
+  const previewShip = parseMoney(shipStr);
+  const previewCostBasis = isMacBid ? macBidAllIn(previewPurchase) : previewPurchase;
+  const previewProfit = previewSold - previewCostBasis - previewFees - previewShip;
+  const previewMargin = previewSold > 0 ? previewProfit / previewSold : 0;
 
   const takePhoto = async (fromCamera: boolean) => {
     const fn = fromCamera
@@ -172,8 +216,35 @@ export default function ItemScreen() {
   };
 
   const changeStatus = (status: Item['status']) => {
+    // Persist first, then update local state immediately so the active chip
+    // and the status in the header change on the same tap.
     setStatus(item.id, status);
-    refresh();
+    const today = new Date().toLocaleDateString('en-US');
+    setItem({
+      ...item,
+      status,
+      dateListed: status === 'Listed' ? today : item.dateListed,
+      dateSold: status === 'Sold' ? today : item.dateSold,
+    });
+    setStatusNote(`✓ Marked ${status}`);
+    setTimeout(() => setStatusNote(''), 3000);
+  };
+
+  const saveCosts = () => {
+    const purchase = parseMoney(cost);
+    const estShip = parseMoney(estShipStr);
+    const soldPrice = parseMoney(soldStr);
+    const fees = parseMoney(feesStr);
+    const shipping = parseMoney(shipStr);
+    const costBasis = isMacBid ? macBidAllIn(purchase) : purchase;
+    const profit = soldPrice > 0 ? soldPrice - costBasis - fees - shipping : 0;
+    const revenue = soldPrice;
+    const profitMargin = soldPrice > 0 ? `${((profit / soldPrice) * 100).toFixed(1)}%` : '';
+    const next = { ...item, purchase, estShip, soldPrice, fees, shipping, profit, revenue, profitMargin };
+    updateItem(item.id, next);
+    setItem(next);
+    setCostsNote('✓ Costs saved');
+    setTimeout(() => setCostsNote(''), 3000);
   };
 
   const saveLocation = () => {
@@ -198,31 +269,124 @@ export default function ItemScreen() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Pricing (30% margin target, 13.6% eBay fee)</Text>
-        <Text style={styles.line}>
-          Purchase (bid): {formatMoney(item.purchase)}
-          {isMacBid ? ` → all-in MAC.BID: ${formatMoney(allIn)}` : ' (not a Mac.Bid lot, no fees added)'}
-        </Text>
-        <Text style={styles.line}>Est. shipping: {formatMoney(item.estShip)}</Text>
-        <Text style={styles.line}>
-          Min eBay price (free shipping): {formatMoney(minEbay)}
-        </Text>
-        <Text style={styles.line}>
-          Suggested eBay: {formatMoney(suggested)}
-          {item.researchPrice > 0 ? ' (from Research Price)' : ' (from margin math)'}
-        </Text>
-        <Text style={styles.line}>
-          Profit at suggested: {formatMoney(profitAtSuggested)} · margin{' '}
-          {(marginAtSuggested * 100).toFixed(1)}%
-        </Text>
-        <Text style={[styles.line, ok ? styles.pass : styles.fail]}>
-          {ok ? '✓ Passes 30% margin' : '✗ Below 30% margin — reprice or skip'}
-        </Text>
-        <Text style={styles.line}>Facebook price (round up to $5): {formatMoney(fb)}</Text>
+        <View style={styles.hero}>
+          <Text style={styles.heroLabel}>Suggested eBay price</Text>
+          <Text style={styles.heroPrice}>{formatMoney(suggested)}</Text>
+          <Text style={[styles.pill, ok ? styles.pillPass : styles.pillFail]}>
+            {ok ? '✓ Passes 30% margin' : '✗ Below 30% margin — reprice or skip'}
+          </Text>
+          <Text style={styles.note}>
+            {item.researchPrice > 0
+              ? 'Based on your Research Price'
+              : 'From margin math (cost + shipping + fees)'}
+          </Text>
+        </View>
+        <View style={styles.tileGrid}>
+          <View style={styles.tile}>
+            <Text style={styles.tileLabel}>{isMacBid ? 'Cost (all-in)' : 'Cost'}</Text>
+            <Text style={styles.tileValue}>{formatMoney(allIn)}</Text>
+            {isMacBid && <Text style={styles.tileSub}>bid {formatMoney(item.purchase)}</Text>}
+          </View>
+          <View style={styles.tile}>
+            <Text style={styles.tileLabel}>Est. shipping</Text>
+            <Text style={styles.tileValue}>{formatMoney(item.estShip)}</Text>
+          </View>
+          <View style={styles.tile}>
+            <Text style={styles.tileLabel}>Min eBay price</Text>
+            <Text style={styles.tileValue}>{formatMoney(minEbay)}</Text>
+          </View>
+          <View style={styles.tile}>
+            <Text style={styles.tileLabel}>Facebook price</Text>
+            <Text style={styles.tileValue}>{formatMoney(fb)}</Text>
+            <Text style={styles.tileSub}>rounded up to $5</Text>
+          </View>
+          <View style={styles.tile}>
+            <Text style={styles.tileLabel}>Profit at suggested</Text>
+            <Text style={styles.tileValue}>{formatMoney(profitAtSuggested)}</Text>
+          </View>
+          <View style={styles.tile}>
+            <Text style={styles.tileLabel}>Margin at suggested</Text>
+            <Text style={styles.tileValue}>{(marginAtSuggested * 100).toFixed(1)}%</Text>
+          </View>
+        </View>
         {item.soldPrice > 0 && (
           <Text style={styles.line}>
-            Sold for {formatMoney(item.soldPrice)} · sheet profit {formatMoney(item.profit)}
+            Sold for {formatMoney(item.soldPrice)} · actual profit {formatMoney(item.profit)}
+            {item.profitMargin ? ` · margin ${item.profitMargin}` : ''}
           </Text>
         )}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Costs &amp; sale</Text>
+        <Text style={styles.note}>Same columns as the spreadsheet — edit, then save. Profit updates as you type.</Text>
+        <View style={styles.moneyGrid}>
+          <View style={styles.moneyField}>
+            <Text style={styles.fieldLabel}>Cost (bid / purchase)</Text>
+            <TextInput
+              style={styles.input}
+              value={cost}
+              onChangeText={setCost}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              returnKeyType="done"
+            />
+          </View>
+          <View style={styles.moneyField}>
+            <Text style={styles.fieldLabel}>Est. shipping</Text>
+            <TextInput
+              style={styles.input}
+              value={estShipStr}
+              onChangeText={setEstShipStr}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              returnKeyType="done"
+            />
+          </View>
+          <View style={styles.moneyField}>
+            <Text style={styles.fieldLabel}>Sold price</Text>
+            <TextInput
+              style={styles.input}
+              value={soldStr}
+              onChangeText={setSoldStr}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              returnKeyType="done"
+            />
+          </View>
+          <View style={styles.moneyField}>
+            <Text style={styles.fieldLabel}>Fees paid</Text>
+            <TextInput
+              style={styles.input}
+              value={feesStr}
+              onChangeText={setFeesStr}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              returnKeyType="done"
+            />
+          </View>
+          <View style={styles.moneyField}>
+            <Text style={styles.fieldLabel}>Shipping paid</Text>
+            <TextInput
+              style={styles.input}
+              value={shipStr}
+              onChangeText={setShipStr}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              returnKeyType="done"
+            />
+          </View>
+        </View>
+        {previewSold > 0 && (
+          <Text style={[styles.line, previewProfit >= 0 ? styles.pass : styles.fail]}>
+            Actual: profit {formatMoney(previewProfit)} · margin{' '}
+            {(previewMargin * 100).toFixed(1)}% · revenue {formatMoney(previewSold)}
+          </Text>
+        )}
+        <Pressable style={styles.btn} onPress={saveCosts}>
+          <Text style={styles.btnText}>Save costs</Text>
+        </Pressable>
+        {costsNote !== '' && <Text style={[styles.note, styles.pass]}>{costsNote}</Text>}
       </View>
 
       <View style={styles.card}>
@@ -296,28 +460,31 @@ export default function ItemScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>QR label</Text>
-        <QRCode value={item.qrCode} size={160} />
-        <Text style={styles.line}>{item.id} · {item.qrCode}</Text>
-        <Text style={styles.note}>Scan this with the Scan tab to open this item.</Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Status</Text>
-        <View style={styles.btnRow}>
-          <Pressable style={styles.btn} onPress={() => changeStatus('Listed')}>
-            <Text style={styles.btnText}>Mark Listed</Text>
-          </Pressable>
-          <Pressable style={styles.btn} onPress={() => changeStatus('Sold')}>
-            <Text style={styles.btnText}>Mark Sold</Text>
-          </Pressable>
-          <Pressable style={styles.btn} onPress={() => changeStatus('Trash')}>
-            <Text style={styles.btnText}>Trash</Text>
-          </Pressable>
-          <Pressable style={styles.btn} onPress={() => changeStatus('Return')}>
-            <Text style={styles.btnText}>Return</Text>
-          </Pressable>
+        <Text style={styles.cardTitle}>Status — {item.status}</Text>
+        <View style={styles.statusRow}>
+          {ALL_STATUSES.map((s) => (
+            <Pressable
+              key={s}
+              style={[styles.statusChip, item.status === s && styles.statusChipActive]}
+              onPress={() => changeStatus(s)}
+              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+            >
+              <Text
+                style={[styles.statusChipText, item.status === s && styles.statusChipTextActive]}
+              >
+                {s}
+              </Text>
+            </Pressable>
+          ))}
         </View>
+        {(item.dateListed !== '' || item.dateSold !== '') && (
+          <Text style={styles.note}>
+            {item.dateListed !== '' ? `Listed ${item.dateListed}` : ''}
+            {item.dateListed !== '' && item.dateSold !== '' ? ' · ' : ''}
+            {item.dateSold !== '' ? `Sold ${item.dateSold}` : ''}
+          </Text>
+        )}
+        {statusNote !== '' && <Text style={[styles.note, styles.pass]}>{statusNote}</Text>}
       </View>
 
       <Link href={`/listing/${item.id}`} asChild>
@@ -352,6 +519,51 @@ const styles = StyleSheet.create({
   },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: spacing.sm },
   container: { backgroundColor: colors.background, flex: 1 },
+  hero: { alignItems: 'center', marginBottom: spacing.md },
+  heroLabel: { color: colors.muted, fontSize: 13, fontWeight: '600' },
+  heroPrice: { color: colors.text, fontSize: 36, fontWeight: '800', lineHeight: 42, marginTop: 2 },
+  pill: {
+    borderRadius: 999,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: spacing.sm,
+    overflow: 'hidden',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  pillPass: { backgroundColor: colors.success, color: '#fff' },
+  pillFail: { backgroundColor: colors.danger, color: '#fff' },
+  tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
+  tile: {
+    backgroundColor: '#fff',
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    flexBasis: '47%',
+    flexGrow: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  tileLabel: { color: colors.muted, fontSize: 12, fontWeight: '600' },
+  tileValue: { color: colors.text, fontSize: 19, fontWeight: '700', marginTop: 2 },
+  tileSub: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  moneyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
+  moneyField: { flexBasis: '47%', flexGrow: 1 },
+  fieldLabel: { color: colors.muted, fontSize: 13, fontWeight: '600', marginBottom: 4 },
+  statusRow: { flexDirection: 'row', flexWrap: 'wrap' },
+  statusChip: {
+    alignItems: 'center',
+    backgroundColor: colors.chip,
+    borderRadius: 999,
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+    marginTop: spacing.sm,
+    minHeight: minTouchHeight,
+    paddingHorizontal: 16,
+  },
+  statusChipActive: { backgroundColor: colors.primary },
+  statusChipText: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  statusChipTextActive: { color: '#fff' },
   content: { paddingHorizontal: spacing.lg },
   fail: { color: colors.danger, fontWeight: '700' },
   input: {
