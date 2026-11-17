@@ -63,6 +63,11 @@ export interface Item {
   profit: number;
   revenue: number;
   profitMargin: string;
+  // Per-item: apply the MAC.BID fees + tax to the bid when computing the
+  // cost, i.e. (bid x 1.15 + $3) x 1.07. When false (or unset on old items,
+  // which fall back to the place), the Cost entered is the total cost of
+  // goods, with no fees or tax added. Not everything comes from MAC.BID.
+  macBidFees?: boolean;
   // App-only fields
   location: string;
   qrCode: string; // reseller://item/RB-xxx
@@ -77,10 +82,6 @@ export interface Settings {
   ebayFeePct: number; // 0.136
   targetMarginPct: number; // 0.30
   salesTaxPct: number; // 0.07 for Anderson, SC
-  // When true, a MAC.BID lot's cost is computed from the bid:
-  // (bid x 1.15 + $3) x 1.07. When false, the Cost entered on the item is
-  // used as-is — the total cost of goods, with no fees or tax added.
-  applyMacBidFees: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -89,7 +90,6 @@ export const DEFAULT_SETTINGS: Settings = {
   ebayFeePct: 0.136,
   targetMarginPct: 0.3,
   salesTaxPct: 0.07,
-  applyMacBidFees: true,
 };
 
 export function normaliseStatus(raw: string): ItemStatus {
@@ -100,6 +100,11 @@ export function normaliseStatus(raw: string): ItemStatus {
     return s;
   }
   return 'Unlisted';
+}
+
+export function appliesMacBidFees(item: Pick<Item, 'place' | 'macBidFees'>): boolean {
+  if (typeof item.macBidFees === 'boolean') return item.macBidFees;
+  return item.place.toLowerCase().includes('mac');
 }
 
 export function qrFor(id: string): string {

@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -29,6 +30,7 @@ import {
 } from '../../src/lib/pricing';
 import { removeBackground } from '../../src/services/bg-remover';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
+import { appliesMacBidFees } from '../../src/lib/types';
 import type { Item } from '../../src/lib/types';
 
 const ALL_STATUSES: Item['status'][] = [
@@ -77,6 +79,30 @@ export default function ItemScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item?.id]);
 
+  // Calculator's own scratch fields — separate from the save fields above.
+  // Cost defaults to the saved cost for this item.
+  const [calcCost, setCalcCost] = useState('');
+  const [calcShip, setCalcShip] = useState('');
+  const [calcPrice, setCalcPrice] = useState('');
+  useEffect(() => {
+    if (!item) return;
+    const s = getSettings();
+    const costBasis = appliesMacBidFees(item)
+      ? macBidAllIn(item.purchase)
+      : item.purchase;
+    const sugg = suggestedEbayPrice(
+      costBasis,
+      item.estShip,
+      item.researchPrice,
+      s.ebayFeePct,
+      s.targetMarginPct,
+    );
+    setCalcCost(moneyStr(costBasis));
+    setCalcShip(moneyStr(item.estShip));
+    setCalcPrice(moneyStr(sugg));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item?.id]);
+
   const refresh = useCallback(() => {
     if (!id) return;
     const it = getItem(id);
@@ -95,11 +121,11 @@ export default function ItemScreen() {
   }
 
   const settings = getSettings();
-  const isMacBid = item.place.toLowerCase().includes('mac');
-  // When the MAC.BID fees flag is on, a MAC.BID lot's cost is computed from
-  // the bid: (bid x 1.15 + $3) x 1.07. When it is off, the Cost entered on
-  // the item is used as-is — the total cost of goods.
-  const applyMacBid = isMacBid && settings.applyMacBidFees;
+  // Per-item flag (Costs & sale card): when on, a MAC.BID lot's cost is
+  // computed from the bid: (bid x 1.15 + $3) x 1.07. When off, the Cost
+  // entered on the item is used as-is — the total cost of goods. Not
+  // everything comes from MAC.BID, so each item decides for itself.
+  const applyMacBid = appliesMacBidFees(item);
   const allIn = applyMacBid ? macBidAllIn(item.purchase) : item.purchase;
   const minEbay = minEbayPrice(allIn, item.estShip, settings.ebayFeePct, settings.targetMarginPct);
   const suggested = suggestedEbayPrice(
@@ -114,35 +140,13 @@ export default function ItemScreen() {
   const profitAtSuggested = ebayProfit(suggested, allIn, item.estShip, settings.ebayFeePct);
   const ok = passesMargin(suggested, allIn, item.estShip, settings.ebayFeePct, settings.targetMarginPct);
 
-  // Live calculator from the Costs & sale fields as they are typed — every
-  // keystroke recomputes the numbers below, before anything is saved.
-  const previewPurchase = parseMoney(cost);
-  const previewEstShip = parseMoney(estShipStr);
-  const previewSold = parseMoney(soldStr);
-  const previewFees = parseMoney(feesStr);
-  const previewShip = parseMoney(shipStr);
-  const previewCostBasis = applyMacBid ? macBidAllIn(previewPurchase) : previewPurchase;
-  const liveSuggested = suggestedEbayPrice(
-    previewCostBasis,
-    previewEstShip,
-    item.researchPrice,
-    settings.ebayFeePct,
-    settings.targetMarginPct,
-  );
-  const liveProfitAtSuggested = ebayProfit(
-    liveSuggested,
-    previewCostBasis,
-    previewEstShip,
-    settings.ebayFeePct,
-  );
-  const liveMarginAtSuggested = ebayMargin(
-    liveSuggested,
-    previewCostBasis,
-    previewEstShip,
-    settings.ebayFeePct,
-  );
-  const previewProfit = previewSold - previewCostBasis - previewFees - previewShip;
-  const previewMargin = previewSold > 0 ? previewProfit / previewSold : 0;
+  // Margin calculator (its own card below, scratch only — never saved).
+  const cCost = parseMoney(calcCost);
+  const cShip = parseMoney(calcShip);
+  const cPrice = parseMoney(calcPrice);
+  const cFee = cPrice * settings.ebayFeePct;
+  const cProfit = cPrice - cFee - cCost - cShip;
+  const cMargin = cPrice > 0 ? cProfit / cPrice : 0;
 
   const takePhoto = async (fromCamera: boolean) => {
     const fn = fromCamera
@@ -353,7 +357,23 @@ export default function ItemScreen() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Costs &amp; sale</Text>
-        <Text style={styles.note}>Same columns as the spreadsheet — edit, then save. Profit updates as you type.</Text>
+        <Text style={styles.note}>Same columns as the spreadsheet — edit, then save.</Text>
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Bought on MAC.BID — add fees + tax</Text>
+          <Switch
+            value={applyMacBid}
+            onValueChange={(v) => {
+              const next = { ...item, macBidFees: v };
+              updateItem(item.id, next);
+              setItem(next);
+            }}
+          />
+        </View>
+        <Text style={styles.note}>
+          {applyMacBid
+            ? 'On: cost = (bid × 1.15 + $3) × 1.07.'
+            : 'Off: the cost you enter is the total cost of goods, no fees or tax added.'}
+        </Text>
         <View style={styles.moneyGrid}>
           <View style={styles.moneyField}>
             <Text style={styles.fieldLabel}>
@@ -413,24 +433,68 @@ export default function ItemScreen() {
             />
           </View>
         </View>
-        <View style={styles.calcBox}>
-          <Text style={styles.calcTitle}>Live calculator — updates as you type</Text>
-          <Text style={styles.line}>
-            Suggested eBay {formatMoney(liveSuggested)} → profit{' '}
-            {formatMoney(liveProfitAtSuggested)} · margin{' '}
-            {(liveMarginAtSuggested * 100).toFixed(1)}%
-          </Text>
-          {previewSold > 0 && (
-            <Text style={[styles.line, previewProfit >= 0 ? styles.pass : styles.fail]}>
-              Sold at {formatMoney(previewSold)}: profit {formatMoney(previewProfit)} ·
-              margin {(previewMargin * 100).toFixed(1)}% · revenue {formatMoney(previewSold)}
-            </Text>
-          )}
-        </View>
         <Pressable style={styles.btn} onPress={saveCosts}>
           <Text style={styles.btnText}>Save costs</Text>
         </Pressable>
         {costsNote !== '' && <Text style={[styles.note, styles.pass]}>{costsNote}</Text>}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Margin calculator</Text>
+        <Text style={styles.note}>
+          Scratch pad — changing these never saves anything. Cost starts at the saved cost.
+        </Text>
+        <View style={styles.moneyGrid}>
+          <View style={styles.moneyField}>
+            <Text style={styles.fieldLabel}>Cost</Text>
+            <TextInput
+              style={styles.input}
+              value={calcCost}
+              onChangeText={setCalcCost}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              returnKeyType="done"
+            />
+          </View>
+          <View style={styles.moneyField}>
+            <Text style={styles.fieldLabel}>Shipping</Text>
+            <TextInput
+              style={styles.input}
+              value={calcShip}
+              onChangeText={setCalcShip}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              returnKeyType="done"
+            />
+          </View>
+          <View style={styles.moneyField}>
+            <Text style={styles.fieldLabel}>Selling price</Text>
+            <TextInput
+              style={styles.input}
+              value={calcPrice}
+              onChangeText={setCalcPrice}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              returnKeyType="done"
+            />
+          </View>
+        </View>
+        {cPrice > 0 ? (
+          <View style={styles.calcBox}>
+            <Text style={[styles.calcMargin, cMargin >= 0.3 ? styles.pass : styles.fail]}>
+              {(cMargin * 100).toFixed(1)}% margin
+            </Text>
+            <Text style={styles.calcProfit}>Profit {formatMoney(cProfit)}</Text>
+            <Text style={styles.line}>Selling price {formatMoney(cPrice)}</Text>
+            <Text style={styles.line}>
+              eBay fee ({(settings.ebayFeePct * 100).toFixed(1)}%) −{formatMoney(cFee)}
+            </Text>
+            <Text style={styles.line}>Cost −{formatMoney(cCost)}</Text>
+            <Text style={styles.line}>Shipping −{formatMoney(cShip)}</Text>
+          </View>
+        ) : (
+          <Text style={styles.note}>Enter a selling price to see the margin.</Text>
+        )}
       </View>
 
       <View style={styles.card}>
@@ -657,7 +721,15 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     padding: spacing.md,
   },
-  calcTitle: { color: colors.muted, fontSize: 12, fontWeight: '700', marginBottom: 4 },
+  calcMargin: { fontSize: 30, fontWeight: '800', lineHeight: 36 },
+  calcProfit: { color: colors.text, fontSize: 19, fontWeight: '700', marginTop: 2 },
+  switchRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+  },
+  switchLabel: { color: colors.text, flex: 1, fontSize: 15, marginRight: spacing.md },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap' },
   statusChip: {
     alignItems: 'center',

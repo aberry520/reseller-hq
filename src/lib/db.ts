@@ -82,6 +82,7 @@ function seedToItem(s: (typeof SEED_ITEMS)[number], now: string): Item {
     profit: s.profit,
     revenue: s.revenue,
     profitMargin: s.profitMargin,
+    macBidFees: s.place.toLowerCase().includes('mac'),
     location: '',
     qrCode: qrFor(s.id),
     photos: [],
@@ -163,6 +164,7 @@ export function initDb(): void {
       profit REAL NOT NULL DEFAULT 0,
       revenue REAL NOT NULL DEFAULT 0,
       profitMargin TEXT NOT NULL DEFAULT '',
+      macBidFees INTEGER NOT NULL DEFAULT 0,
       location TEXT NOT NULL DEFAULT '',
       qrCode TEXT NOT NULL DEFAULT '',
       photos TEXT NOT NULL DEFAULT '[]',
@@ -174,6 +176,14 @@ export function initDb(): void {
       value TEXT NOT NULL
     );
   `);
+  // Migration for installs seeded before macBidFees existed: add the column
+  // (fails harmlessly if it is already there) and backfill it from place.
+  try {
+    d.execSync(`ALTER TABLE items ADD COLUMN macBidFees INTEGER NOT NULL DEFAULT 0;`);
+    d.runSync(`UPDATE items SET macBidFees = 1 WHERE lower(place) LIKE '%mac%'`);
+  } catch {
+    // Column already exists.
+  }
   const count = d.getFirstSync<{ c: number }>('SELECT COUNT(*) AS c FROM items');
   if ((count?.c ?? 0) === 0) {
     const now = new Date().toISOString();
@@ -181,9 +191,9 @@ export function initDb(): void {
       d.runSync(
         `INSERT INTO items (id, name, purchase, estShip, suggestedPrice, minPrice,
           researchPrice, notes, place, datePurchased, status, dateListed, dateSold,
-          soldPrice, fees, shipping, profit, revenue, profitMargin,
+          soldPrice, fees, shipping, profit, revenue, profitMargin, macBidFees,
           location, qrCode, photos, whiteBgPhotos, createdAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           s.id,
           s.name,
@@ -204,6 +214,7 @@ export function initDb(): void {
           s.profit,
           s.revenue,
           s.profitMargin,
+          s.place.toLowerCase().includes('mac') ? 1 : 0,
           '',
           qrFor(s.id),
           '[]',
@@ -222,15 +233,17 @@ export function initDb(): void {
   }
 }
 
-type ItemRow = Omit<Item, 'photos' | 'whiteBgPhotos'> & {
+type ItemRow = Omit<Item, 'photos' | 'whiteBgPhotos' | 'macBidFees'> & {
   photos: string;
   whiteBgPhotos: string;
+  macBidFees: number;
 };
 
 function rowToItem(row: ItemRow): Item {
   return {
     ...row,
     status: row.status as ItemStatus,
+    macBidFees: row.macBidFees === 1,
     photos: safeParse(row.photos),
     whiteBgPhotos: safeParse(row.whiteBgPhotos),
   };
@@ -296,7 +309,7 @@ export function updateItem(id: string, patch: Partial<Item>): void {
     `UPDATE items SET name=?, purchase=?, estShip=?, suggestedPrice=?, minPrice=?,
       researchPrice=?, notes=?, place=?, datePurchased=?, status=?, dateListed=?,
       dateSold=?, soldPrice=?, fees=?, shipping=?, profit=?, revenue=?,
-      profitMargin=?, location=?, qrCode=?, photos=?, whiteBgPhotos=?
+      profitMargin=?, macBidFees=?, location=?, qrCode=?, photos=?, whiteBgPhotos=?
      WHERE id=?`,
     [
       next.name,
@@ -317,6 +330,7 @@ export function updateItem(id: string, patch: Partial<Item>): void {
       next.profit,
       next.revenue,
       next.profitMargin,
+      next.macBidFees ? 1 : 0,
       next.location,
       next.qrCode,
       JSON.stringify(next.photos),
@@ -368,6 +382,7 @@ export function addItem(input: {
     profit: 0,
     revenue: 0,
     profitMargin: '',
+    macBidFees: input.place.toLowerCase().includes('mac'),
     location: '',
     qrCode: qrFor(id),
     photos: [],
@@ -383,9 +398,9 @@ export function addItem(input: {
   getDb().runSync(
     `INSERT INTO items (id, name, purchase, estShip, suggestedPrice, minPrice,
       researchPrice, notes, place, datePurchased, status, dateListed, dateSold,
-      soldPrice, fees, shipping, profit, revenue, profitMargin,
+      soldPrice, fees, shipping, profit, revenue, profitMargin, macBidFees,
       location, qrCode, photos, whiteBgPhotos, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       item.id,
       item.name,
@@ -405,6 +420,7 @@ export function addItem(input: {
       item.shipping,
       item.profit,
       item.revenue,
+      item.macBidFees ? 1 : 0,
       item.profitMargin,
       item.location,
       item.qrCode,
@@ -431,7 +447,6 @@ export function getSettings(): Settings {
     if (r.key === 'ebayFeePct') out.ebayFeePct = parseFloat(r.value) || 0.136;
     if (r.key === 'targetMarginPct') out.targetMarginPct = parseFloat(r.value) || 0.3;
     if (r.key === 'salesTaxPct') out.salesTaxPct = parseFloat(r.value) || 0.07;
-    if (r.key === 'applyMacBidFees') out.applyMacBidFees = r.value === 'true';
   }
   return out;
 }

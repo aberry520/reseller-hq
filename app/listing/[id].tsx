@@ -12,6 +12,7 @@ import {
   suggestedEbayPrice,
 } from '../../src/lib/pricing';
 import { getEbayStatus } from '../../src/services/ebay';
+import { appliesMacBidFees } from '../../src/lib/types';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 
 export default function ListingScreen() {
@@ -29,8 +30,7 @@ export default function ListingScreen() {
   }
 
   const settings = getSettings();
-  const isMacBid = item.place.toLowerCase().includes('mac');
-  const applyMacBid = isMacBid && settings.applyMacBidFees;
+  const applyMacBid = appliesMacBidFees(item);
   const allIn = applyMacBid ? macBidAllIn(item.purchase) : item.purchase;
   const ebayPrice = suggestedEbayPrice(
     allIn,

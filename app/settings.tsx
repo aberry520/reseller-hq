@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -80,20 +80,6 @@ export default function SettingsScreen() {
         returnKeyType="done"
       />
 
-      <Text style={styles.label}>MAC.BID fees + tax</Text>
-      <View style={styles.switchRow}>
-        <Text style={styles.switchLabel}>Add MAC.BID fees + tax to the bid</Text>
-        <Switch
-          value={s.applyMacBidFees}
-          onValueChange={(v) => setS({ ...s, applyMacBidFees: v })}
-        />
-      </View>
-      <Text style={styles.note}>
-        On: a MAC.BID lot&apos;s cost is (bid × 1.15 + $3) × 1.07. Off: the Cost you enter
-        on the item is used as-is — the total cost of goods, with no fees or tax added.
-        Non-MAC.BID items are never affected.
-      </Text>
-
       <Text style={styles.label}>eBay</Text>
       <Text style={styles.note}>{ebay.message}</Text>
 
@@ -130,11 +116,4 @@ const styles = StyleSheet.create({
   },
   label: { color: colors.text, fontSize: 15, fontWeight: '700', marginTop: spacing.lg },
   note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.xs },
-  switchRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.sm,
-  },
-  switchLabel: { color: colors.text, flex: 1, fontSize: 15, marginRight: spacing.md },
 });
