@@ -284,6 +284,23 @@ export async function pushExpenseRows(expenses: Expense[]): Promise<OverwriteRes
   return { count: data.written ?? expenses.length, errors: data.errors ?? [] };
 }
 
+// Push one or more items to the sheet as upserts (merge). Used when an
+// item is removed: the Deleted status goes to the sheet right away, so
+// removing an item changes its status to Deleted in the app AND the
+// sheet, without waiting for a full sync review. Best-effort — it throws
+// when sync is not configured or the sheet cannot be reached, and the
+// caller lets the regular sync pick the Deleted item up as a changed
+// item (App wins pushes it then).
+export async function pushItemsToSheet(items: Item[]): Promise<void> {
+  if (items.length === 0) return;
+  await postSync({
+    action: 'merge',
+    upserts: items.map((it) => ({ appId: it.id, fields: itemToSheetFields(it) })),
+    assignIds: [],
+    trash: [],
+  });
+}
+
 // Replace the whole sheet tab with the app's items.
 export async function overwriteSheetFromApp(): Promise<OverwriteResult> {
   const items = getAllItems();

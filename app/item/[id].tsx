@@ -16,7 +16,8 @@ import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
+import { getItem, getSettings, getSyncState, setStatus, updateItem } from '../../src/lib/db';
+import { pushItemsToSheet } from '../../src/lib/sync';
 import { cleanName } from '../../src/lib/listing';
 import {
   ebayMargin,
@@ -265,7 +266,7 @@ export default function ItemScreen() {
   const confirmDelete = () => {
     Alert.alert(
       'Remove item?',
-      `${item.name} will be marked Deleted. It will be hidden from the app but stay in the sheet, so you can restore it by changing its status in the sheet.`,
+      `${item.name} will be marked Deleted in the app and the sheet. It will be hidden from the app, but you can restore it by changing its status in the sheet.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -274,6 +275,16 @@ export default function ItemScreen() {
           onPress: () => {
             setStatus(item.id, 'Deleted');
             router.replace('/');
+            // Push the Deleted status to the sheet right away (only when
+            // the item is known to be in the sheet — an app-only item has
+            // no sheet row to update). Best-effort: if sync is not set
+            // up or the sheet cannot be reached, the regular sync picks
+            // the Deleted item up as a changed item and App wins pushes
+            // it then.
+            const synced = new Set(getSyncState()?.ids ?? []);
+            if (synced.has(item.id)) {
+              pushItemsToSheet([{ ...item, status: 'Deleted' }]).catch(() => {});
+            }
           },
         },
       ],
