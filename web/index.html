@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reseller HQ — Print labels</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Everything in .app-ui is hidden when printing; only .label-sheet prints. -->
+<div class="app-ui">
+  <header class="header">
+    <div>
+      <h1>Reseller HQ — Print labels</h1>
+      <p class="sub">Zebra GC420T &middot; 2&Prime; &times; 1&Prime; labels &middot; QR opens the item in the phone app</p>
+    </div>
+    <div class="selected-pill" id="selected-pill">0 selected</div>
+  </header>
+
+  <section class="print-setup">
+    <strong>Print setup (Chrome / Edge):</strong> pick your <strong>Zebra GC420T</strong> as the
+    printer, paper size <strong>2&Prime; &times; 1&Prime;</strong>, margins <strong>None</strong>,
+    scale <strong>100%</strong>. Print <strong>one test label first</strong> and scan it with the
+    phone app before a batch.
+  </section>
+
+  <section class="toolbar">
+    <input id="search" type="search" placeholder="Search name or RB-001&hellip;" autocomplete="off" aria-label="Search items">
+    <div class="chips" id="chips" role="group" aria-label="Filter by status"></div>
+  </section>
+
+  <section class="bulk">
+    <button id="btn-select-filtered" type="button">Select all filtered</button>
+    <button id="btn-select-all" type="button">Select all 192</button>
+    <button id="btn-select-tolist" type="button">Select To List (59)</button>
+    <button id="btn-clear" type="button" class="ghost">Clear selection</button>
+    <span class="bulk-spacer"></span>
+    <button id="btn-print" type="button" class="primary">Print selected</button>
+    <button id="btn-zpl" type="button">Download ZPL for selected</button>
+  </section>
+
+  <p class="list-meta" id="list-meta"></p>
+  <main class="list" id="list" aria-live="polite"></main>
+
+  <h2>Label preview <span class="muted">(exactly what prints — 2&Prime; &times; 1&Prime; each)</span></h2>
+  <p class="muted" id="preview-meta">Nothing selected yet. Pick items above, or use a bulk button.</p>
+  <div class="preview" id="preview"></div>
+</div>
+
+<!-- Print output: one 2"x1" label per selected item. Built by app.js. -->
+<div class="label-sheet" id="label-sheet" aria-hidden="true"></div>
+
+<script src="qrcode.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
