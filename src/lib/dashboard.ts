@@ -56,6 +56,9 @@ export interface DashboardData {
   allTime: { all: AllTimeStats; sourced: AllTimeStats };
   totalSpent: number;
   moneyOnHand: number;
+  // Live expenses only — Deleted rows are excluded from the count and
+  // the total (they live in the sheet so they can be restored).
+  expenses: { count: number; total: number };
 }
 
 // "M/d/yyyy" (or "M/d/yy") → a Date at midnight, or null when unparseable.
@@ -234,5 +237,9 @@ export function computeDashboard(
     allTime: { all: allTimeAll, sourced: allTimeSourced },
     totalSpent,
     moneyOnHand,
+    expenses: {
+      count: liveExpenses.length,
+      total: sum(liveExpenses.map((e) => e.price)),
+    },
   };
 }

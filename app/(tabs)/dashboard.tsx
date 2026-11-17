@@ -7,6 +7,11 @@
 //
 // The price calculator from Home lives in Tools → Margin calculator, so it
 // is not duplicated here.
+//
+// Colour: All = blue, Sourced = green, Free = amber. Profit is green when
+// positive and red when negative, so the good and bad numbers read at a
+// glance. Money on Hand is a tinted hero card (green when positive, red
+// when negative) and shows the live expense count and total.
 
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -37,26 +42,93 @@ function pct(v: number): string {
   return `${(v * 100).toFixed(2)}%`;
 }
 
-function StatRow({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
+// Accent per sales group, used on the cards and the key-stat tiles.
+const ACCENTS = {
+  all: '#0969da',
+  sourced: '#1a7f37',
+  free: '#9a6700',
+} as const;
+
+type Tone = 'good' | 'bad' | undefined;
+
+function toneOf(v: number): Tone {
+  if (v > 0) return 'good';
+  if (v < 0) return 'bad';
+  return undefined;
+}
+
+function StatRow({
+  label,
+  value,
+  bold,
+  tone,
+}: {
+  label: string;
+  value: string;
+  bold?: boolean;
+  tone?: Tone;
+}) {
   return (
     <View style={styles.statRow}>
       <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, bold && styles.statValueBold]}>{value}</Text>
+      <Text
+        style={[
+          styles.statValue,
+          bold && styles.statValueBold,
+          tone === 'good' && styles.valueGood,
+          tone === 'bad' && styles.valueBad,
+        ]}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
 
 function StatCard({
   title,
+  accent,
   children,
 }: {
   title: string;
+  accent: string;
   children: React.ReactNode;
 }) {
   return (
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>{title}</Text>
+    <View style={[styles.card, { borderTopColor: accent, borderTopWidth: 4 }]}>
+      <View style={styles.cardTitleRow}>
+        <View style={[styles.dot, { backgroundColor: accent }]} />
+        <Text style={[styles.cardTitle, { color: accent }]}>{title}</Text>
+      </View>
       {children}
+    </View>
+  );
+}
+
+// One headline number in the key-stats grid (range sales).
+function Tile({
+  label,
+  value,
+  accent,
+  tone,
+}: {
+  label: string;
+  value: string;
+  accent: string;
+  tone?: Tone;
+}) {
+  return (
+    <View style={[styles.tile, { borderTopColor: accent, borderTopWidth: 4 }]}>
+      <Text style={styles.tileLabel}>{label}</Text>
+      <Text
+        style={[
+          styles.tileValue,
+          tone === 'good' && styles.valueGood,
+          tone === 'bad' && styles.valueBad,
+        ]}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
@@ -85,7 +157,10 @@ export default function DashboardScreen() {
     try {
       const exp = await fetchExpenseRows();
       replaceExpenses(exp);
-      setNote(`Expenses refreshed from the sheet (${exp.length} expenses).`);
+      // Deleted rows stay in the sheet so they can be restored; the count
+      // shown is the live ones only.
+      const live = exp.filter((e) => (e.status || '').trim() !== 'Deleted').length;
+      setNote(`Expenses refreshed from the sheet (${live} expenses).`);
       return 'refreshed';
     } catch (e) {
       setNote(`Could not reach the sheet (${e instanceof Error ? e.message : 'error'}) — using the saved copy.`);
@@ -140,6 +215,8 @@ export default function DashboardScreen() {
     setRefreshing(false);
   };
 
+  const moneyTone = data ? toneOf(data.moneyOnHand) : undefined;
+
   return (
     <ScrollView
       style={styles.container}
@@ -188,8 +265,10 @@ export default function DashboardScreen() {
           <Pressable style={styles.chip} onPress={lastMonth}>
             <Text style={styles.chipText}>Last month</Text>
           </Pressable>
-          <Pressable style={styles.chip} onPress={onRefresh} disabled={refreshing}>
-            <Text style={styles.chipText}>{refreshing ? 'Refreshing…' : 'Refresh Expenses'}</Text>
+          <Pressable style={[styles.chip, styles.chipPrimary]} onPress={onRefresh} disabled={refreshing}>
+            <Text style={[styles.chipText, styles.chipPrimaryText]}>
+              {refreshing ? 'Refreshing…' : 'Refresh Expenses'}
+            </Text>
           </Pressable>
         </View>
         {!!note && <Text style={styles.note}>{note}</Text>}
@@ -197,69 +276,139 @@ export default function DashboardScreen() {
 
       {data && (
         <>
-          <View style={styles.heroCard}>
+          <View
+            style={[
+              styles.heroCard,
+              moneyTone === 'good' && styles.heroGood,
+              moneyTone === 'bad' && styles.heroBad,
+            ]}
+          >
             <Text style={styles.heroLabel}>Money on Hand</Text>
-            <Text style={styles.heroValue}>{money(data.moneyOnHand)}</Text>
+            <Text
+              style={[
+                styles.heroValue,
+                moneyTone === 'good' && styles.valueGood,
+                moneyTone === 'bad' && styles.valueBad,
+              ]}
+            >
+              {money(data.moneyOnHand)}
+            </Text>
             <Text style={styles.heroNote}>
-              All-time profit − cost of goods − expenses · Total spent in range:{' '}
-              {money(data.totalSpent)}
+              {data.expenses.count} expense{data.expenses.count === 1 ? '' : 's'} ·{' '}
+              {money(data.expenses.total)} · Total spent in range: {money(data.totalSpent)}
             </Text>
           </View>
 
           <Text style={styles.sectionTitle}>Sales in range</Text>
-          <StatCard title="All Sales">
+          <View style={styles.tileGrid}>
+            <Tile
+              label="Sales"
+              value={String(data.range.all.numberOfSales)}
+              accent={ACCENTS.all}
+            />
+            <Tile
+              label="Total sales"
+              value={money(data.range.all.totalSales)}
+              accent={ACCENTS.all}
+            />
+            <Tile
+              label="Profit"
+              value={money(data.range.all.profit)}
+              accent={ACCENTS.sourced}
+              tone={toneOf(data.range.all.profit)}
+            />
+            <Tile
+              label="Avg margin"
+              value={pct(data.range.all.avgProfitMargin)}
+              accent={ACCENTS.free}
+              tone={toneOf(data.range.all.avgProfitMargin)}
+            />
+          </View>
+
+          <StatCard title="All Sales" accent={ACCENTS.all}>
             <StatRow label="Number of Sales" value={String(data.range.all.numberOfSales)} />
             <StatRow label="Total in Sales" value={money(data.range.all.totalSales)} />
             <StatRow label="Cost of Sold Goods" value={money(data.range.all.costOfSoldGoods)} />
             <StatRow label="Fees/Shipping" value={money(data.range.all.feesShipping)} />
-            <StatRow label="Profit" value={money(data.range.all.profit)} bold />
+            <StatRow
+              label="Profit"
+              value={money(data.range.all.profit)}
+              bold
+              tone={toneOf(data.range.all.profit)}
+            />
             <StatRow label="Average sale Price" value={money(data.range.all.avgSalePrice)} />
             <StatRow
               label="Average Profit Margin (all time)"
               value={pct(data.range.all.avgProfitMargin)}
+              tone={toneOf(data.range.all.avgProfitMargin)}
             />
           </StatCard>
-          <StatCard title="Sourced Sales">
+          <StatCard title="Sourced Sales" accent={ACCENTS.sourced}>
             <StatRow label="Number of Sales" value={String(data.range.sourced.numberOfSales)} />
             <StatRow label="Total in Sales" value={money(data.range.sourced.totalSales)} />
             <StatRow label="Cost of Sold Goods" value={money(data.range.sourced.costOfSoldGoods)} />
             <StatRow label="Fees/Shipping" value={money(data.range.sourced.feesShipping)} />
-            <StatRow label="Profit" value={money(data.range.sourced.profit)} bold />
+            <StatRow
+              label="Profit"
+              value={money(data.range.sourced.profit)}
+              bold
+              tone={toneOf(data.range.sourced.profit)}
+            />
             <StatRow label="Average sale Price" value={money(data.range.sourced.avgSalePrice)} />
             <StatRow
               label="Average Profit Margin (all time)"
               value={pct(data.range.sourced.avgProfitMargin)}
+              tone={toneOf(data.range.sourced.avgProfitMargin)}
             />
           </StatCard>
-          <StatCard title="Free Sales">
+          <StatCard title="Free Sales" accent={ACCENTS.free}>
             <StatRow label="Number of Sales" value={String(data.range.free.numberOfSales)} />
             <StatRow label="Total in Sales" value={money(data.range.free.totalSales)} />
             <StatRow label="Cost of Sold Goods" value={money(data.range.free.costOfSoldGoods)} />
             <StatRow label="Fees/Shipping" value={money(data.range.free.feesShipping)} />
-            <StatRow label="Profit" value={money(data.range.free.profit)} bold />
+            <StatRow
+              label="Profit"
+              value={money(data.range.free.profit)}
+              bold
+              tone={toneOf(data.range.free.profit)}
+            />
             <StatRow label="Average sale Price" value={money(data.range.free.avgSalePrice)} />
-            <StatRow label="Average Profit Margin" value={pct(data.range.free.avgProfitMargin)} />
+            <StatRow
+              label="Average Profit Margin"
+              value={pct(data.range.free.avgProfitMargin)}
+              tone={toneOf(data.range.free.avgProfitMargin)}
+            />
           </StatCard>
 
           <Text style={styles.sectionTitle}>All Time Sales</Text>
-          <StatCard title="All Sales">
+          <StatCard title="All Sales" accent={ACCENTS.all}>
             <StatRow label="Number of Sales" value={String(data.allTime.all.numberOfSales)} />
             <StatRow label="Total in Sales" value={money(data.allTime.all.totalSales)} />
             <StatRow label="Cost of Goods" value={money(data.allTime.all.costOfGoods)} />
             <StatRow label="Cost of Sold Goods" value={money(data.allTime.all.costOfSoldGoods)} />
             <StatRow label="Cost of Inventory" value={money(data.allTime.all.costOfInventory)} />
             <StatRow label="Fees/Shipping" value={money(data.allTime.all.feesShipping)} />
-            <StatRow label="Profit" value={money(data.allTime.all.profit)} bold />
+            <StatRow
+              label="Profit"
+              value={money(data.allTime.all.profit)}
+              bold
+              tone={toneOf(data.allTime.all.profit)}
+            />
             <StatRow label="Average sale Price" value={money(data.allTime.all.avgSalePrice)} />
           </StatCard>
-          <StatCard title="Sourced Sales">
+          <StatCard title="Sourced Sales" accent={ACCENTS.sourced}>
             <StatRow label="Number of Sales" value={String(data.allTime.sourced.numberOfSales)} />
             <StatRow label="Total in Sales" value={money(data.allTime.sourced.totalSales)} />
             <StatRow label="Cost of Goods" value={money(data.allTime.sourced.costOfGoods)} />
             <StatRow label="Cost of Sold Goods" value={money(data.allTime.sourced.costOfSoldGoods)} />
             <StatRow label="Cost of Inventory" value={money(data.allTime.sourced.costOfInventory)} />
             <StatRow label="Fees/Shipping" value={money(data.allTime.sourced.feesShipping)} />
-            <StatRow label="Profit" value={money(data.allTime.sourced.profit)} bold />
+            <StatRow
+              label="Profit"
+              value={money(data.allTime.sourced.profit)}
+              bold
+              tone={toneOf(data.allTime.sourced.profit)}
+            />
             <StatRow label="Average sale Price" value={money(data.allTime.sourced.avgSalePrice)} />
           </StatCard>
         </>
@@ -278,6 +427,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  cardTitleRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, marginBottom: 4 },
   chip: {
     borderColor: colors.border,
     borderRadius: radius.sm,
@@ -285,21 +435,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
+  chipPrimary: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipPrimaryText: { color: '#fff' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   chipText: { color: colors.text, fontSize: 14, fontWeight: '600' },
   container: { backgroundColor: colors.background, flex: 1 },
   dateField: { flex: 1 },
   dateLabel: { color: colors.muted, fontSize: 13, fontWeight: '600' },
   dateRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
+  dot: { borderRadius: 5, height: 10, width: 10 },
+  heroBad: { backgroundColor: '#fdecea' },
   heroCard: {
     backgroundColor: colors.chip,
     borderRadius: radius.md,
     marginTop: spacing.md,
     padding: spacing.lg,
   },
+  heroGood: { backgroundColor: '#e6f4ea' },
   heroLabel: { color: colors.muted, fontSize: 14, fontWeight: '600' },
   heroNote: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.xs },
-  heroValue: { color: colors.text, fontSize: 32, fontWeight: '800', marginTop: 2 },
+  heroValue: { color: colors.text, fontSize: 34, fontWeight: '800', marginTop: 2 },
   input: {
     borderColor: colors.border,
     borderRadius: radius.sm,
@@ -316,9 +471,28 @@ const styles = StyleSheet.create({
   statRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 5,
+    paddingVertical: 6,
   },
-  statValue: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  statValue: { color: colors.text, fontSize: 16, fontWeight: '600' },
   statValueBold: { fontWeight: '800' },
+  tile: {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexBasis: '48%',
+    flexGrow: 1,
+    padding: spacing.md,
+  },
+  tileGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  tileLabel: { color: colors.muted, fontSize: 13, fontWeight: '600' },
+  tileValue: { color: colors.text, fontSize: 20, fontWeight: '800', marginTop: 4 },
   title: { color: colors.text, fontSize: 20, fontWeight: '700' },
+  valueBad: { color: colors.danger },
+  valueGood: { color: colors.success },
 });

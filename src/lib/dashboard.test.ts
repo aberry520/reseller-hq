@@ -115,6 +115,20 @@ check('all time sourced: average sale price', d.allTime.sourced.avgSalePrice, 71
 check('money on hand', d.moneyOnHand, 1844.2);
 check('total spent in range (all rows)', d.totalSpent, 192.34);
 
+// Expenses — live rows only. The seed has 8 expenses ($752.28); a Deleted
+// row must not count toward the count, the total, or Money on Hand.
+check('expenses: live count', d.expenses.count, 8);
+check('expenses: live total', d.expenses.total, 752.28);
+const dDeleted = computeDashboard(
+  items,
+  [...EXPENSES_SEED_ITEMS, { id: 'EX-009', name: 'test', price: 500, date: '11/17/2026', status: 'Deleted' }],
+  start,
+  end,
+);
+check('expenses: Deleted row excluded from count', dDeleted.expenses.count, 8);
+check('expenses: Deleted row excluded from total', dDeleted.expenses.total, 752.28);
+check('expenses: Deleted row excluded from money on hand', dDeleted.moneyOnHand, 1844.2);
+
 if (failures > 0) throw new Error(`${failures} dashboard check(s) failed`);
 // eslint-disable-next-line no-console
 console.log('Dashboard checks done.');
