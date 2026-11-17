@@ -28,6 +28,7 @@ import {
   updateExpense,
 } from '../src/lib/db';
 import { fetchExpenseRows, pushExpenseRows } from '../src/lib/sync';
+import DateField from '../src/components/DateField';
 import { formatMoney } from '../src/lib/pricing';
 import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
 import type { Expense } from '../src/lib/types';
@@ -218,14 +219,9 @@ export default function ExpensesScreen() {
         keyboardType="decimal-pad"
         returnKeyType="next"
       />
-      <TextInput
-        style={styles.input}
-        value={date}
-        onChangeText={setDate}
-        placeholder="Date — M/d/yyyy"
-        autoCapitalize="none"
-        returnKeyType="done"
-      />
+      <View style={styles.dateField}>
+        <DateField label="Date" value={date} onChange={setDate} />
+      </View>
       <Pressable style={styles.btn} onPress={save}>
         <Text style={styles.btnText}>{editingId ? 'Save changes' : 'Add expense'}</Text>
       </Pressable>
@@ -316,6 +312,7 @@ const styles = StyleSheet.create({
   container: { backgroundColor: colors.background, flex: 1 },
   content: { paddingHorizontal: spacing.lg },
   dangerBtn: { backgroundColor: '#b42318', flex: 1 },
+  dateField: { marginTop: spacing.sm },
   editRow: { flexDirection: 'row', gap: spacing.sm },
   empty: { color: colors.muted, fontSize: 15, marginTop: spacing.sm },
   input: {

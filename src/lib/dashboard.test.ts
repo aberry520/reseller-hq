@@ -16,7 +16,7 @@
 //   only covers Purchase rows 3-139. The app counts all rows: $192.34.
 // - The sheet's range is 10/1-10/31/2026; the test uses that same range.
 
-import { computeDashboard, parseDashboardDate } from './dashboard';
+import { computeDashboard, parseDashboardDate, rangePreset } from './dashboard';
 import { EXPENSES_SEED_ITEMS } from './expenses-seed-data';
 import { SEED_ITEMS } from './seed-data';
 import { Item, normaliseStatus } from './types';
@@ -169,6 +169,32 @@ check('items: Deleted item excluded from all-time sales', dDelItem.allTime.all.n
 check('items: Deleted item excluded from cost of goods', dDelItem.allTime.all.costOfGoods, d.allTime.all.costOfGoods);
 check('items: Deleted item excluded from total spent', dDelItem.totalSpent, d.totalSpent);
 check('items: Deleted item excluded from money on hand', dDelItem.moneyOnHand, d.moneyOnHand);
+
+// Range presets for the dashboard dropdown. "This month" starts on the
+// 1st and ends today; "Last month" is the whole previous month; "Last 3
+// months" is the current month plus the two before it; "Year to date" is
+// Jan 1 to today.
+const now = new Date();
+const presetThis = rangePreset('thisMonth');
+check('preset this month: starts on the 1st', presetThis.start.getDate(), 1);
+check('preset this month: starts this month', presetThis.start.getMonth(), now.getMonth());
+check('preset this month: ends today', presetThis.end.getDate(), now.getDate());
+const presetLast = rangePreset('lastMonth');
+const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+check('preset last month: starts on the 1st', presetLast.start.getDate(), 1);
+check('preset last month: starts last month', presetLast.start.getMonth(), lastMonth.getMonth());
+check(
+  'preset last month: ends on the last day',
+  presetLast.end.getDate(),
+  new Date(now.getFullYear(), now.getMonth(), 0).getDate(),
+);
+const preset3 = rangePreset('last3Months');
+check('preset last 3 months: starts 2 months back', preset3.start.getMonth(), new Date(now.getFullYear(), now.getMonth() - 2, 1).getMonth());
+check('preset last 3 months: ends today', preset3.end.getDate(), now.getDate());
+const presetYtd = rangePreset('yearToDate');
+check('preset year to date: starts Jan 1', presetYtd.start.getMonth(), 0);
+check('preset year to date: starts Jan 1 (day)', presetYtd.start.getDate(), 1);
+check('preset year to date: ends today', presetYtd.end.getDate(), now.getDate());
 
 if (failures > 0) throw new Error(`${failures} dashboard check(s) failed`);
 // eslint-disable-next-line no-console

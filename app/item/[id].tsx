@@ -30,6 +30,7 @@ import {
   suggestedEbayPrice,
 } from '../../src/lib/pricing';
 import { removeBackground } from '../../src/services/bg-remover';
+import DateField from '../../src/components/DateField';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 import { appliesMacBidFees } from '../../src/lib/types';
 import type { Item } from '../../src/lib/types';
@@ -561,17 +562,7 @@ export default function ItemScreen() {
             />
           </View>
           <View style={styles.moneyField}>
-            <Text style={styles.fieldLabel}>Date sold</Text>
-            <TextInput
-              style={styles.input}
-              value={soldDateStr}
-              onChangeText={setSoldDateStr}
-              placeholder="M/D/YYYY"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="numbers-and-punctuation"
-              returnKeyType="done"
-            />
+            <DateField label="Date sold" value={soldDateStr} onChange={setSoldDateStr} />
           </View>
         </View>
         <Pressable style={styles.btn} onPress={saveCosts}>
@@ -814,17 +805,7 @@ export default function ItemScreen() {
           />
         </View>
         <View style={styles.modalField}>
-          <Text style={styles.fieldLabel}>Date sold</Text>
-          <TextInput
-            style={styles.input}
-            value={soldDateStr}
-            onChangeText={setSoldDateStr}
-            placeholder="M/D/YYYY"
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="numbers-and-punctuation"
-            returnKeyType="done"
-          />
+          <DateField label="Date sold" value={soldDateStr} onChange={setSoldDateStr} />
         </View>
         {parseMoney(soldStr) > 0 && (
           <Text style={styles.line}>

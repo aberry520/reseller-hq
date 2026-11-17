@@ -83,6 +83,35 @@ export function currentMonthRange(): { start: Date; end: Date } {
   };
 }
 
+export type RangePreset = 'thisMonth' | 'lastMonth' | 'last3Months' | 'yearToDate';
+
+export const RANGE_PRESETS: Array<{ key: RangePreset; label: string }> = [
+  { key: 'thisMonth', label: 'This month' },
+  { key: 'lastMonth', label: 'Last month' },
+  { key: 'last3Months', label: 'Last 3 months' },
+  { key: 'yearToDate', label: 'Year to date' },
+];
+
+// The dashboard's range dropdown. "Last 3 months" is the current month
+// plus the two before it; "Year to date" is Jan 1 to today.
+export function rangePreset(preset: RangePreset): { start: Date; end: Date } {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  switch (preset) {
+    case 'thisMonth':
+      return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: today };
+    case 'lastMonth':
+      return {
+        start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+        end: new Date(now.getFullYear(), now.getMonth(), 0),
+      };
+    case 'last3Months':
+      return { start: new Date(now.getFullYear(), now.getMonth() - 2, 1), end: today };
+    case 'yearToDate':
+      return { start: new Date(now.getFullYear(), 0, 1), end: today };
+  }
+}
+
 function inRange(d: Date | null, start: Date, end: Date): boolean {
   if (!d) return false;
   const day = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();

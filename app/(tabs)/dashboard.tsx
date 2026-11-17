@@ -14,7 +14,7 @@
 // when negative) and shows the live expense count and total.
 
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -24,15 +24,16 @@ import {
   replaceExpenses,
 } from '../../src/lib/db';
 import {
+  RANGE_PRESETS,
+  RangePreset,
   computeDashboard,
-  currentMonthRange,
   formatDashboardDate,
-  parseDashboardDate,
+  rangePreset,
   DashboardData,
 } from '../../src/lib/dashboard';
 import { fetchExpenseRows } from '../../src/lib/sync';
 import { formatMoney } from '../../src/lib/pricing';
-import { colors, radius, spacing } from '../../src/lib/ui';
+import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 
 function money(v: number): string {
   return formatMoney(v);
@@ -135,16 +136,17 @@ function Tile({
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
+  const [preset, setPreset] = useState<RangePreset>('thisMonth');
   const [startText, setStartText] = useState('');
   const [endText, setEndText] = useState('');
+  const [presetOpen, setPresetOpen] = useState(false);
   const [data, setData] = useState<DashboardData | null>(null);
   const [note, setNote] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  const recompute = useCallback((startStr: string, endStr: string) => {
-    const start = parseDashboardDate(startStr);
-    const end = parseDashboardDate(endStr);
-    if (!start || !end || end < start) return;
+  const recompute = useCallback((start: Date, end: Date) => {
+    setStartText(formatDashboardDate(start));
+    setEndText(formatDashboardDate(end));
     setData(computeDashboard(getAllItems(), getExpenses(), start, end));
   }, []);
 
@@ -170,11 +172,8 @@ export default function DashboardScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const { start, end } = currentMonthRange();
-      const startStr = formatDashboardDate(start);
-      const endStr = formatDashboardDate(end);
-      setStartText(startStr);
-      setEndText(endStr);
+      const { start, end } = rangePreset('thisMonth');
+      setPreset('thisMonth');
       // Refresh Expenses from the sheet when configured, then show the
       // numbers (from the saved copy when offline or not configured).
       // Free items need no refresh: they are the Inventory rows whose cost
@@ -182,38 +181,28 @@ export default function DashboardScreen() {
       setRefreshing(true);
       refreshFromSheet()
         .finally(() => {
-          recompute(startStr, endStr);
+          recompute(start, end);
           setRefreshing(false);
         });
     }, [recompute, refreshFromSheet]),
   );
 
-  const setRange = (start: Date, end: Date) => {
-    const s = formatDashboardDate(start);
-    const e = formatDashboardDate(end);
-    setStartText(s);
-    setEndText(e);
-    recompute(s, e);
-  };
-
-  const thisMonth = () => {
-    const { start, end } = currentMonthRange();
-    setRange(start, end);
-  };
-
-  const lastMonth = () => {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const end = new Date(now.getFullYear(), now.getMonth(), 0);
-    setRange(start, end);
+  const applyPreset = (p: RangePreset) => {
+    setPreset(p);
+    setPresetOpen(false);
+    const { start, end } = rangePreset(p);
+    recompute(start, end);
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
     await refreshFromSheet();
-    recompute(startText, endText);
+    const { start, end } = rangePreset(preset);
+    recompute(start, end);
     setRefreshing(false);
   };
+
+  const presetLabel = RANGE_PRESETS.find((p) => p.key === preset)?.label ?? 'This month';
 
   const moneyTone = data ? toneOf(data.moneyOnHand) : undefined;
 
@@ -226,45 +215,14 @@ export default function DashboardScreen() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Date range</Text>
-        <View style={styles.dateRow}>
-          <View style={styles.dateField}>
-            <Text style={styles.dateLabel}>Start</Text>
-            <TextInput
-              style={styles.input}
-              value={startText}
-              onChangeText={(v) => {
-                setStartText(v);
-                recompute(v, endText);
-              }}
-              placeholder="M/D/YYYY"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="numbers-and-punctuation"
-            />
-          </View>
-          <View style={styles.dateField}>
-            <Text style={styles.dateLabel}>End</Text>
-            <TextInput
-              style={styles.input}
-              value={endText}
-              onChangeText={(v) => {
-                setEndText(v);
-                recompute(startText, v);
-              }}
-              placeholder="M/D/YYYY"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="numbers-and-punctuation"
-            />
-          </View>
-        </View>
+        <Pressable style={styles.dropdown} onPress={() => setPresetOpen(true)}>
+          <Text style={styles.dropdownText}>{presetLabel}</Text>
+          <Text style={styles.dropdownChevron}>▾</Text>
+        </Pressable>
+        <Text style={styles.note}>
+          {startText} – {endText}
+        </Text>
         <View style={styles.chipRow}>
-          <Pressable style={styles.chip} onPress={thisMonth}>
-            <Text style={styles.chipText}>This month</Text>
-          </Pressable>
-          <Pressable style={styles.chip} onPress={lastMonth}>
-            <Text style={styles.chipText}>Last month</Text>
-          </Pressable>
           <Pressable style={[styles.chip, styles.chipPrimary]} onPress={onRefresh} disabled={refreshing}>
             <Text style={[styles.chipText, styles.chipPrimaryText]}>
               {refreshing ? 'Refreshing…' : 'Refresh Expenses'}
@@ -273,6 +231,34 @@ export default function DashboardScreen() {
         </View>
         {!!note && <Text style={styles.note}>{note}</Text>}
       </View>
+
+      <Modal
+        visible={presetOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setPresetOpen(false)}
+      >
+        <View style={styles.sheet}>
+          <View style={[styles.sheetCard, { paddingBottom: insets.bottom + spacing.md }]}>
+            <Text style={styles.sheetTitle}>Date range</Text>
+            {RANGE_PRESETS.map((p) => (
+              <Pressable
+                key={p.key}
+                style={[styles.option, preset === p.key && styles.optionActive]}
+                onPress={() => applyPreset(p.key)}
+              >
+                <Text style={[styles.optionText, preset === p.key && styles.optionTextActive]}>
+                  {p.label}
+                </Text>
+                {preset === p.key && <Text style={styles.optionCheck}>✓</Text>}
+              </Pressable>
+            ))}
+            <Pressable style={styles.cancelBtn} onPress={() => setPresetOpen(false)}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       {data && (
         <>
@@ -440,10 +426,20 @@ const styles = StyleSheet.create({
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   chipText: { color: colors.text, fontSize: 14, fontWeight: '600' },
   container: { backgroundColor: colors.background, flex: 1 },
-  dateField: { flex: 1 },
-  dateLabel: { color: colors.muted, fontSize: 13, fontWeight: '600' },
-  dateRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
   dot: { borderRadius: 5, height: 10, width: 10 },
+  dropdown: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+    minHeight: minTouchHeight,
+    paddingHorizontal: spacing.md,
+  },
+  dropdownChevron: { color: colors.muted, fontSize: 16 },
+  dropdownText: { color: colors.text, fontSize: 16, fontWeight: '600' },
   heroBad: { backgroundColor: '#fdecea' },
   heroCard: {
     backgroundColor: colors.chip,
@@ -455,18 +451,38 @@ const styles = StyleSheet.create({
   heroLabel: { color: colors.muted, fontSize: 14, fontWeight: '600' },
   heroNote: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.xs },
   heroValue: { color: colors.text, fontSize: 34, fontWeight: '800', marginTop: 2 },
-  input: {
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    color: colors.text,
-    fontSize: 16,
-    marginTop: 4,
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
-  },
   note: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.sm },
+  option: {
+    alignItems: 'center',
+    borderBottomColor: colors.divider,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: minTouchHeight,
+    paddingVertical: spacing.sm,
+  },
+  optionActive: { backgroundColor: colors.card },
+  optionCheck: { color: colors.primary, fontSize: 16, fontWeight: '700' },
+  optionText: { color: colors.text, fontSize: 16 },
+  optionTextActive: { color: colors.primary, fontWeight: '700' },
   sectionTitle: { color: colors.text, fontSize: 18, fontWeight: '700', marginTop: spacing.lg },
+  sheet: { backgroundColor: 'rgba(0,0,0,0.4)', flex: 1, justifyContent: 'flex-end' },
+  sheetCard: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    padding: spacing.lg,
+  },
+  sheetTitle: { color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: spacing.sm },
+  cancelBtn: {
+    alignItems: 'center',
+    backgroundColor: colors.muted,
+    borderRadius: radius.sm,
+    marginTop: spacing.md,
+    minHeight: minTouchHeight,
+    paddingVertical: spacing.md,
+  },
+  cancelText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   statLabel: { color: colors.muted, flex: 1, fontSize: 15 },
   statRow: {
     flexDirection: 'row',

@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { addItem } from '../src/lib/db';
 import { pushItemsToSheetLive } from '../src/lib/sync';
+import DateField from '../src/components/DateField';
 import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
 
 export default function AddScreen() {
@@ -51,8 +52,9 @@ export default function AddScreen() {
       <TextInput style={styles.input} value={estShip} onChangeText={setEstShip} keyboardType="decimal-pad" returnKeyType="next" />
       <Text style={styles.label}>Place of purchase</Text>
       <TextInput style={styles.input} value={place} onChangeText={setPlace} returnKeyType="next" />
-      <Text style={styles.label}>Date purchased</Text>
-      <TextInput style={styles.input} value={datePurchased} onChangeText={setDatePurchased} returnKeyType="next" />
+      <View style={styles.field}>
+        <DateField label="Date purchased" value={datePurchased} onChange={setDatePurchased} />
+      </View>
       <Text style={styles.label}>Notes</Text>
       <TextInput style={styles.input} value={notes} onChangeText={setNotes} multiline />
       <Pressable style={styles.btn} onPress={save}>
@@ -75,6 +77,7 @@ const styles = StyleSheet.create({
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
   container: { backgroundColor: colors.background, flex: 1 },
   content: { paddingHorizontal: spacing.lg },
+  field: { marginTop: spacing.lg },
   input: {
     borderColor: colors.border,
     borderRadius: radius.sm,
