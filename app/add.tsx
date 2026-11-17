@@ -4,12 +4,10 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { addItem } from '../src/lib/db';
 import { pushItemsToSheetLive } from '../src/lib/sync';
-import { useOutOfSync } from '../src/lib/useOutOfSync';
 import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
 
 export default function AddScreen() {
   const insets = useSafeAreaInsets();
-  const outOfSync = useOutOfSync();
   const [name, setName] = useState('');
   const [purchase, setPurchase] = useState('');
   const [estShip, setEstShip] = useState('10');
@@ -57,17 +55,7 @@ export default function AddScreen() {
       <TextInput style={styles.input} value={datePurchased} onChangeText={setDatePurchased} returnKeyType="next" />
       <Text style={styles.label}>Notes</Text>
       <TextInput style={styles.input} value={notes} onChangeText={setNotes} multiline />
-      {outOfSync && (
-        <Text style={styles.gateNote}>
-          The app and sheet are out of sync — sync first (tap Sync now in the banner above)
-          before adding items.
-        </Text>
-      )}
-      <Pressable
-        style={[styles.btn, outOfSync && styles.disabledBtn]}
-        onPress={save}
-        disabled={outOfSync}
-      >
+      <Pressable style={styles.btn} onPress={save}>
         <Text style={styles.btnText}>Save item</Text>
       </Pressable>
     </ScrollView>
@@ -87,8 +75,6 @@ const styles = StyleSheet.create({
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
   container: { backgroundColor: colors.background, flex: 1 },
   content: { paddingHorizontal: spacing.lg },
-  disabledBtn: { opacity: 0.5 },
-  gateNote: { color: colors.danger, fontSize: 14, lineHeight: 20, marginTop: spacing.md },
   input: {
     borderColor: colors.border,
     borderRadius: radius.sm,

@@ -2,19 +2,21 @@
 // whole app (root layout) and appears only when the app has changes the
 // sheet does not (out-of-sync flag) AND the device is back online
 // (NetInfo). "Sync now" takes Austin straight to the Sync screen and
-// starts the check, so one tap begins the catch-up. Until he syncs, item
-// transactions are gated (see useOutOfSync in the Add, Item and
-// Inventory screens), so nothing else can drift further out of sync.
+// starts the check, so one tap begins the catch-up. Nothing is locked
+// while out of sync — he can keep adding and editing offline, and the
+// banner is the reminder to sync when he is back online.
 
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isOutOfSync, onOutOfSyncChange } from '../lib/db';
 import { colors, radius, spacing } from '../lib/ui';
 
 export default function SyncBanner() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [visible, setVisible] = useState(false);
 
   const refresh = useCallback(() => {
@@ -36,7 +38,7 @@ export default function SyncBanner() {
   if (!visible) return null;
 
   return (
-    <View style={styles.banner}>
+    <View style={[styles.banner, { paddingTop: insets.top + spacing.sm }]}>
       <Text style={styles.text} numberOfLines={2}>
         You&apos;re back online — the app and sheet are out of sync.
       </Text>
