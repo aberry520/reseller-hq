@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   FlatList,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -100,6 +101,13 @@ export default function InventoryScreen() {
         renderItem={({ item }) => (
           <Link href={`/item/${item.id}`} asChild>
             <Pressable style={styles.row} hitSlop={{ top: 4, bottom: 4 }}>
+              {item.photos.length > 0 ? (
+                <Image source={{ uri: item.photos[0] }} style={styles.thumb} />
+              ) : (
+                <View style={styles.thumbPlaceholder}>
+                  <Text style={styles.thumbPlaceholderText}>No{'\n'}photo</Text>
+                </View>
+              )}
               <View style={styles.rowMain}>
                 <Text style={styles.rowName} numberOfLines={2}>
                   {cleanName(item.name)}
@@ -206,6 +214,17 @@ const styles = StyleSheet.create({
   },
   rowMain: { flex: 1, marginRight: spacing.sm },
   rowMeta: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.xs },
+  thumb: { borderRadius: radius.sm, height: 64, marginRight: spacing.sm, width: 64 },
+  thumbPlaceholder: {
+    alignItems: 'center',
+    backgroundColor: colors.chip,
+    borderRadius: radius.sm,
+    height: 64,
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+    width: 64,
+  },
+  thumbPlaceholderText: { color: colors.muted, fontSize: 11, lineHeight: 14, textAlign: 'center' },
   rowName: { color: colors.text, fontSize: 17, fontWeight: '600', lineHeight: 22 },
   search: {
     backgroundColor: colors.card,

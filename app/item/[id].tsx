@@ -129,6 +129,23 @@ export default function ItemScreen() {
     ]);
   };
 
+  const movePhoto = (uri: string, dir: -1 | 1) => {
+    const idx = item.photos.indexOf(uri);
+    const nextIdx = idx + dir;
+    if (idx < 0 || nextIdx < 0 || nextIdx >= item.photos.length) return;
+    const photos = [...item.photos];
+    [photos[idx], photos[nextIdx]] = [photos[nextIdx], photos[idx]];
+    // Keep the white-bg versions in the same order when the arrays line up.
+    let whiteBgPhotos = item.whiteBgPhotos;
+    if (item.photos.length === item.whiteBgPhotos.length) {
+      whiteBgPhotos = [...item.whiteBgPhotos];
+      [whiteBgPhotos[idx], whiteBgPhotos[nextIdx]] = [whiteBgPhotos[nextIdx], whiteBgPhotos[idx]];
+    }
+    const next = { ...item, photos, whiteBgPhotos };
+    updateItem(item.id, next);
+    setItem(next);
+  };
+
   const changeStatus = (status: Item['status']) => {
     setStatus(item.id, status);
     refresh();
@@ -186,7 +203,7 @@ export default function ItemScreen() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Photos ({item.photos.length})</Text>
         {item.photos.length === 0 && <Text style={styles.line}>No photos yet.</Text>}
-        {item.photos.map((uri) => (
+        {item.photos.map((uri, i) => (
           <View key={uri} style={styles.photoWrap}>
             <Image source={{ uri }} style={styles.photo} />
             <Pressable
@@ -197,6 +214,29 @@ export default function ItemScreen() {
             >
               <Text style={styles.removeBtnText}>✕</Text>
             </Pressable>
+            <View style={styles.photoControls}>
+              <Text style={styles.photoLabel}>
+                {i === 0 ? 'Cover photo' : `Photo ${i + 1} of ${item.photos.length}`}
+              </Text>
+              <View style={styles.moveRow}>
+                <Pressable
+                  style={[styles.moveBtn, i === 0 && styles.moveBtnDisabled]}
+                  disabled={i === 0}
+                  onPress={() => movePhoto(uri, -1)}
+                  hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                >
+                  <Text style={styles.moveBtnText}>↑ Up</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.moveBtn, i === item.photos.length - 1 && styles.moveBtnDisabled]}
+                  disabled={i === item.photos.length - 1}
+                  onPress={() => movePhoto(uri, 1)}
+                  hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                >
+                  <Text style={styles.moveBtnText}>↓ Down</Text>
+                </Pressable>
+              </View>
+            </View>
           </View>
         ))}
         {item.whiteBgPhotos.length > 0 && (
@@ -306,6 +346,23 @@ const styles = StyleSheet.create({
   pass: { color: colors.success, fontWeight: '700' },
   photo: { borderRadius: radius.sm, height: 240, width: '100%' },
   photoWrap: { marginTop: spacing.sm, position: 'relative' },
+  photoControls: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: spacing.xs,
+  },
+  photoLabel: { color: colors.muted, fontSize: 13 },
+  moveRow: { flexDirection: 'row', gap: spacing.sm },
+  moveBtn: {
+    backgroundColor: colors.chip,
+    borderRadius: 8,
+    justifyContent: 'center',
+    minHeight: 36,
+    paddingHorizontal: 12,
+  },
+  moveBtnDisabled: { opacity: 0.4 },
+  moveBtnText: { color: colors.text, fontSize: 14, fontWeight: '600' },
   removeBtn: {
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.6)',
