@@ -26,9 +26,10 @@ type Filter = 'All' | 'To List' | 'Listed' | 'Sold' | 'Draft' | 'Trash' | 'Delet
 
 const FILTERS: Filter[] = ['All', 'To List', 'Listed', 'Sold', 'Draft', 'Trash', 'Deleted'];
 
-type Sort = 'id' | 'newest' | 'oldest' | 'name' | 'costAsc' | 'costDesc' | 'priceDesc';
+type Sort = 'id' | 'idDesc' | 'newest' | 'oldest' | 'name' | 'costAsc' | 'costDesc' | 'priceDesc';
 
 const SORTS: Array<{ key: Sort; label: string; short: string }> = [
+  { key: 'idDesc', label: 'ID: high to low', short: 'ID ↓' },
   { key: 'id', label: 'ID: low to high', short: 'ID' },
   { key: 'newest', label: 'Newest first', short: 'Newest' },
   { key: 'oldest', label: 'Oldest first', short: 'Oldest' },
@@ -52,6 +53,8 @@ function sortList(list: Item[], sort: Sort): Item[] {
   switch (sort) {
     case 'id':
       return out.sort((a, b) => idNum(a) - idNum(b) || byId(a, b));
+    case 'idDesc':
+      return out.sort((a, b) => idNum(b) - idNum(a) || byId(b, a));
     case 'newest':
       return out.sort((a, b) => dateVal(b) - dateVal(a) || byId(a, b));
     case 'oldest':
@@ -128,7 +131,7 @@ export default function InventoryScreen() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('All');
-  const [sort, setSort] = useState<Sort>('id');
+  const [sort, setSort] = useState<Sort>('idDesc');
   const [sortOpen, setSortOpen] = useState(false);
   // Multi-select delete: tap Select, tick the boxes, Delete removes them all.
   const [selectMode, setSelectMode] = useState(false);
