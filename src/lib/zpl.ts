@@ -2,8 +2,8 @@
 // Label size: 2" x 1" at 203 dpi = 406 x 203 dots (change LABEL_W_DOTS /
 // LABEL_H_DOTS if Austin's label stock is a different size).
 // ^BQ is the ZPL QR-code command: ^BQN,2,<magnification> then ^FDQA,<data>.
-// Each label prints: QR (encodes reseller://item/RB-xxx), the item name
-// (truncated to fit), and the human-readable ID underneath.
+// Each label prints: QR (encodes reseller://item/RB-xxx), a short name
+// (max 24 chars, no prices — see shortName), and the human-readable ID.
 // The app does NOT talk to the printer directly in v1 — it generates a .zpl
 // text file (one label per ^XA...^XZ block) that can be sent to the printer
 // with Zebra Setup Utilities, Zebra Browser Print, or any ZPL sender.
@@ -20,8 +20,43 @@ function zplEscape(s: string): string {
   return s.replace(/[\^~]/g, '').trim();
 }
 
+// Short, human-readable label name: the sheet's Item field often carries a
+// MAC.BID suffix (" | Location: Anderson - LRetail: $149.00 Invoice: ... |
+// $52.43 Unpaid") that is unreadable on a 2"x1" label and puts prices on it.
+// Keep only the product name, strip any price/invoice text, max 24 chars
+// at a word boundary. The QR holds the full identity; the phone shows the
+// full name when scanned. Same logic is mirrored in web/app.js shortName.
+export function shortName(raw: string): string {
+  let s = cleanName(raw);
+  const loc = s.search(/\|?\s*Location:/i);
+  if (loc >= 0) s = s.slice(0, loc);
+  s = s
+    .replace(/\$\s?[\d,]+(\.\d{2})?/g, '')
+    .replace(/invoice:?\s*\d+/gi, '')
+    .replace(/retail:?/gi, '')
+    .replace(/\b(saved|unpaid)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[|;:,]+$/g, '')
+    .trim();
+  if (!s) return 'Unnamed item';
+  if (s.length <= 24) return s;
+  const cut = s.slice(0, 24);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > 12 ? cut.slice(0, lastSpace) : cut).trim();
+}
+
+// Split a short name into up to 2 ZPL text lines, each <= 18 chars.
+function splitNameLines(name: string): string[] {
+  if (name.length <= 18) return [name];
+  const cut = name.slice(0, 18);
+  const lastSpace = cut.lastIndexOf(' ');
+  if (lastSpace >= 8) return [cut.slice(0, lastSpace).trim(), name.slice(lastSpace + 1, 36).trim()];
+  return [cut.trim(), name.slice(18, 36).trim()];
+}
+
 export function zplForItem(item: Item, qrMagnification = 4): string {
-  const name = zplEscape(cleanName(item.name)).slice(0, 34);
+  const name = zplEscape(shortName(item.name));
+  const nameLines = splitNameLines(name);
   const lines = [
     '^XA',
     `^PW${LABEL_W_DOTS}`,
@@ -29,12 +64,11 @@ export function zplForItem(item: Item, qrMagnification = 4): string {
     // QR on the left.
     `^FO10,10^BQN,2,${qrMagnification}`,
     `^FDQA,${zplEscape(item.qrCode)}^FS`,
-    // Item name, wrapped over two lines if needed.
-    `^FO130,20^A0N,22,22^FD${name.slice(0, 22)}^FS`,
-    ...(name.length > 22 ? [`^FO130,48^A0N,22,22^FD${name.slice(22)}^FS`] : []),
+    // Short name, up to two lines, larger type so it stays readable.
+    `^FO130,20^A0N,26,26^FD${nameLines[0]}^FS`,
+    ...(nameLines[1] ? [`^FO130,52^A0N,26,26^FD${nameLines[1]}^FS`] : []),
     // Human-readable ID.
-    `^FO130,110^A0N,28,28^FD${zplEscape(item.id)}^FS`,
-    `^FO130,150^A0N,18,18^FDScan to open in Reseller HQ^FS`,
+    `^FO130,118^A0N,28,28^FD${zplEscape(item.id)}^FS`,
     '^PQ1',
     '^XZ',
   ];
@@ -52,8 +86,8 @@ export function labelsHtml(items: Item[]): string {
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(it.qrCode)}`;
       return `<div style="width:2in;height:1in;border:1px solid #000;display:inline-block;margin:4px;padding:4px;box-sizing:border-box;overflow:hidden;font-family:sans-serif;">
         <img src="${qrUrl}" style="width:0.8in;height:0.8in;float:left;margin-right:6px;" />
-        <div style="font-size:11px;font-weight:bold;">${escapeHtml(cleanName(it.name))}</div>
-        <div style="font-size:13px;">${escapeHtml(it.id)}</div>
+        <div style="font-size:12px;font-weight:bold;">${escapeHtml(shortName(it.name))}</div>
+        <div style="font-size:14px;font-weight:bold;">${escapeHtml(it.id)}</div>
       </div>`;
     })
     .join('\n');

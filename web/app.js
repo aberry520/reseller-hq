@@ -43,6 +43,37 @@
   function cleanName(raw) {
     return String(raw || '').split('\n')[0].replace(/\s+/g, ' ').trim();
   }
+  // Short, human-readable label name — same logic as src/lib/zpl.ts shortName.
+  // The sheet's Item field often carries a MAC.BID suffix (" | Location:
+  // Anderson - LRetail: $149.00 Invoice: ... | $52.43 Unpaid") that is
+  // unreadable on a 2"x1" label and puts prices on it. Keep only the product
+  // name, strip any price/invoice text, max 24 chars at a word boundary.
+  // The QR holds the full identity; the phone shows the full name on scan.
+  function shortName(raw) {
+    var s = cleanName(raw);
+    var loc = s.search(/\|?\s*Location:/i);
+    if (loc >= 0) s = s.slice(0, loc);
+    s = s
+      .replace(/\$\s?[\d,]+(\.\d{2})?/g, '')
+      .replace(/invoice:?\s*\d+/gi, '')
+      .replace(/retail:?/gi, '')
+      .replace(/\b(saved|unpaid)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .replace(/[|;:,]+$/g, '')
+      .trim();
+    if (!s) return 'Unnamed item';
+    if (s.length <= 24) return s;
+    var cut = s.slice(0, 24);
+    var lastSpace = cut.lastIndexOf(' ');
+    return (lastSpace > 12 ? cut.slice(0, lastSpace) : cut).trim();
+  }
+  function splitNameLines(name) {
+    if (name.length <= 18) return [name];
+    var cut = name.slice(0, 18);
+    var lastSpace = cut.lastIndexOf(' ');
+    if (lastSpace >= 8) return [cut.slice(0, lastSpace).trim(), name.slice(lastSpace + 1, 36).trim()];
+    return [cut.trim(), name.slice(18, 36).trim()];
+  }
   function matchesFilter(item, f) {
     if (f === 'All') return true;
     if (f === 'To List') return item.status === 'Draft' || item.status === '';
@@ -76,18 +107,18 @@
     return String(s).replace(/[\^~]/g, '').trim();
   }
   function zplForItem(item) {
-    var name = zplEscape(cleanName(item.name)).slice(0, 34);
+    var name = zplEscape(shortName(item.name));
+    var nameLines = splitNameLines(name);
     var lines = [
       '^XA',
       '^PW406',
       '^LL203',
       '^FO10,10^BQN,2,4',
       '^FDQA,' + zplEscape(item.qr) + '^FS',
-      '^FO130,20^A0N,22,22^FD' + name.slice(0, 22) + '^FS',
+      '^FO130,20^A0N,26,26^FD' + nameLines[0] + '^FS',
     ];
-    if (name.length > 22) lines.push('^FO130,48^A0N,22,22^FD' + name.slice(22) + '^FS');
-    lines.push('^FO130,110^A0N,28,28^FD' + zplEscape(item.id) + '^FS');
-    lines.push('^FO130,150^A0N,18,18^FDScan to open in Reseller HQ^FS');
+    if (nameLines[1]) lines.push('^FO130,52^A0N,26,26^FD' + nameLines[1] + '^FS');
+    lines.push('^FO130,118^A0N,28,28^FD' + zplEscape(item.id) + '^FS');
     lines.push('^PQ1');
     lines.push('^XZ');
     return lines.join('\n');
@@ -97,14 +128,15 @@
   }
 
   // ---- Label HTML (preview + print sheet share the same markup) ----
+  // QR + short name + ID only. No prices, no "Scan to open" tagline —
+  // the tagline wasted a line and clipped at the bottom of the label.
   function labelHtml(item) {
-    var name = cleanName(item.name);
+    var name = shortName(item.name);
     return '<div class="label">' +
       '<div class="qr">' + qrSvg(item.qr) + '</div>' +
       '<div class="label-text">' +
         '<div class="label-name">' + esc(name) + '</div>' +
         '<div class="label-id">' + esc(item.id) + '</div>' +
-        '<div class="label-tag">Scan to open in Reseller HQ</div>' +
       '</div></div>';
   }
 

@@ -77,8 +77,10 @@ button:disabled { opacity: 0.45; cursor: default; }
 .preview { display: flex; flex-wrap: wrap; gap: 12px; }
 .preview .label { border: 1px solid #000; }
 
-/* The label itself: exactly 2in x 1in, QR left, name + ID right.
-   This is the same layout as src/lib/zpl.ts (QR ^BQN, name, ID, tagline). */
+/* The label itself: exactly 2in x 1in, QR left, short name + ID right.
+   This is the same layout as src/lib/zpl.ts (QR ^BQN, short name, ID).
+   Name is a max-24-char shorthand, no prices — so it fits in 2-3 lines
+   at a readable size instead of wrapping tiny over 5+ lines. */
 .label {
   width: 2in; height: 1in; overflow: hidden;
   display: flex; align-items: center; gap: 0.06in;
@@ -88,9 +90,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 .label .qr { width: 0.8in; height: 0.8in; flex: none; }
 .label .qr svg { width: 100%; height: 100%; display: block; }
 .label .label-text { min-width: 0; flex: 1; }
-.label .label-name { font-size: 11pt; font-weight: bold; line-height: 1.15; overflow: hidden; }
-.label .label-id { font-size: 13pt; font-weight: bold; margin-top: 0.04in; }
-.label .label-tag { font-size: 7pt; color: #333; margin-top: 0.03in; }
+.label .label-name { font-size: 12pt; font-weight: bold; line-height: 1.15; overflow: hidden; overflow-wrap: break-word; }
+.label .label-id { font-size: 14pt; font-weight: bold; margin-top: 0.05in; }
 
 /* ---------- Print: only the labels, one 2"x1" label per page ---------- */
 .label-sheet { display: none; }
