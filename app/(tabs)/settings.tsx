@@ -3,7 +3,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react
 import { useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getSettings, saveSettings } from '../../src/lib/db';
+import { getSettings, saveSettings, clearLocalData } from '../../src/lib/db';
 import { getEbayStatus } from '../../src/services/ebay';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 import type { Settings } from '../../src/lib/types';
@@ -24,6 +24,27 @@ export default function SettingsScreen() {
   const save = () => {
     saveSettings(s);
     Alert.alert('Saved', 'Settings saved on this device.');
+  };
+
+  const clear = () => {
+    Alert.alert(
+      'Clear local data?',
+      'This deletes everything stored on this device — items and their photos, Free items, Expenses, and sync history — and starts over from the original 192 items. Your settings (including the sync URL and token) are kept, and the sheet itself is never touched. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear everything',
+          style: 'destructive',
+          onPress: () => {
+            clearLocalData();
+            Alert.alert(
+              'Local data cleared',
+              'The app is back to the original 192 items. Your settings were kept — go back to the Inventory or Dashboard to see the fresh data.',
+            );
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -117,6 +138,16 @@ export default function SettingsScreen() {
       <Pressable style={styles.btn} onPress={save}>
         <Text style={styles.btnText}>Save settings</Text>
       </Pressable>
+
+      <Text style={styles.label}>Local data</Text>
+      <Text style={styles.note}>
+        Start over on this device: deletes the items and their photos, Free items, Expenses, and
+        sync history, then re-seeds the original 192 items. Your settings are kept, and the sheet
+        itself is never touched.
+      </Text>
+      <Pressable style={[styles.btn, styles.dangerBtn]} onPress={clear}>
+        <Text style={styles.btnText}>Clear local data</Text>
+      </Pressable>
     </ScrollView>
   );
 }
@@ -134,6 +165,7 @@ const styles = StyleSheet.create({
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
   container: { backgroundColor: colors.background, flex: 1 },
   content: { paddingHorizontal: spacing.lg },
+  dangerBtn: { backgroundColor: '#b42318', marginTop: spacing.md },
   input: {
     borderColor: colors.border,
     borderRadius: radius.sm,

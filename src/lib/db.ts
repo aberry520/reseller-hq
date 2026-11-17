@@ -733,3 +733,38 @@ export function saveSettings(s: Settings): void {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Clear local data — a fresh restart on this device.
+// Wipes the items (including their photos), free items, expenses,
+// tombstones, and sync history, then re-seeds from the original seed files
+// (the 192 Purchase items, 61 free items, 8 expenses). Settings are kept
+// (sync URL/token, BG remover URL, fee/margin defaults), so a re-sync after
+// the reset just works. The sheet itself is never touched.
+// ---------------------------------------------------------------------------
+
+export function clearLocalData(): void {
+  if (IS_WEB) {
+    try {
+      window.localStorage.removeItem(WEB_ITEMS_KEY);
+      window.localStorage.removeItem(WEB_FREE_ITEMS_KEY);
+      window.localStorage.removeItem(WEB_EXPENSES_KEY);
+      window.localStorage.removeItem(WEB_TOMBSTONES_KEY);
+      window.localStorage.removeItem(WEB_SYNC_STATE_KEY);
+    } catch {
+      // Storage unavailable — the in-memory reset below still applies.
+    }
+    webItems = null;
+    webFreeItems = null;
+    webExpenses = null;
+    webLoad(); // re-seeds from the seed files
+    return;
+  }
+  const d = getDb();
+  d.runSync('DELETE FROM items');
+  d.runSync('DELETE FROM free_items');
+  d.runSync('DELETE FROM expenses');
+  d.runSync('DELETE FROM tombstones');
+  d.runSync("DELETE FROM settings WHERE key = '__syncState'");
+  initDb(); // re-seeds every table that is now empty
+}
