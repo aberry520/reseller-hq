@@ -12,6 +12,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { EncodingType, File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAllItems, getDeletedIds, getSettings, getSyncState, clearLocalData } from '../src/lib/db';
@@ -31,6 +33,7 @@ import {
   SheetRow,
   SyncDiff,
 } from '../src/lib/sync-diff';
+import { SHEET_TEMPLATE_B64 } from '../src/lib/sheet-template-b64';
 import { cleanName } from '../src/lib/listing';
 import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
 import { SyncSource } from '../src/lib/types';
@@ -91,6 +94,30 @@ export default function SyncScreen() {
     if (!diff) return;
     setSource(src);
     setChecked(defaultCheckedKeys(diff, src));
+  };
+
+  // Share the bundled sheet template (.xlsx) so a new user can download
+  // it, upload it to Google Drive, and connect the app to it. The
+  // template has the exact Inventory/Expenses structure the sync expects
+  // (headers, formulas, frozen header rows) so nobody has to build the
+  // sheet from scratch or add extra rows/columns that break the sync.
+  // It lives in the repo as base64 text (src/lib/sheet-template-b64.ts)
+  // because the push cannot carry a binary file; it is decoded to a real
+  // .xlsx in the cache dir and shared from there.
+  const shareTemplate = async () => {
+    try {
+      const file = new File(Paths.cache, 'Reseller-HQ-Template.xlsx');
+      await file.write(SHEET_TEMPLATE_B64, { encoding: EncodingType.Base64 });
+      await Sharing.shareAsync(file.uri, {
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        dialogTitle: 'Reseller HQ sheet template',
+      });
+    } catch (e) {
+      Alert.alert(
+        'Could not share the template',
+        e instanceof Error ? e.message : 'Unknown error.',
+      );
+    }
   };
 
   // The banner's "Sync now" opens this screen with ?auto=1 — start the
@@ -230,6 +257,14 @@ export default function SyncScreen() {
           3. Deploy → New deployment → Web app, Execute as Me, Who has access Anyone. Copy the URL.{'\n'}
           4. Paste the URL and the same token into Settings below.
         </Text>
+        <Text style={styles.body}>
+          No sheet yet? Download the template — it has the exact Inventory and Expenses
+          structure (headers, formulas, frozen header rows), so you do not have to build it
+          from scratch. Upload it to Google Drive and it becomes your sheet.
+        </Text>
+        <Pressable style={[styles.btn, styles.freshBtn]} onPress={shareTemplate}>
+          <Text style={styles.btnText}>Download sheet template</Text>
+        </Pressable>
         <Pressable style={styles.btn} onPress={() => router.push('/settings')}>
           <Text style={styles.btnText}>Open Settings</Text>
         </Pressable>
@@ -388,6 +423,19 @@ export default function SyncScreen() {
           <Text style={styles.btnText}>Clear sheet</Text>
         </Pressable>
         {!!freshNote && <Text style={styles.body}>{freshNote}</Text>}
+      </View>
+
+      <View style={styles.freshSection}>
+        <Text style={styles.sectionTitle}>Sheet template</Text>
+        <Text style={styles.body}>
+          Setting up a new sheet? Download the template — it has the exact Inventory and Expenses
+          structure (headers, formulas, frozen header rows). Upload it to Google Drive and it
+          becomes your sheet, so you do not have to build it from scratch or add extra
+          rows/columns that break the sync.
+        </Text>
+        <Pressable style={[styles.btn, styles.freshBtn]} onPress={shareTemplate}>
+          <Text style={styles.btnText}>Download sheet template</Text>
+        </Pressable>
       </View>
     </ScrollView>
   );
