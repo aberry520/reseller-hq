@@ -1,7 +1,18 @@
-// Local-first storage with expo-sqlite. Works offline in the garage.
+// Local-first storage. Works offline in the garage.
 // First run: seeds from src/lib/seed-data.ts (generated from seed-purchase.csv).
 // Google Sheets is the backup/export source, NOT a live sync in v1.
+//
+// Two backends, same sync API (every screen calls these synchronously):
+//   - Native (iOS/Android): expo-sqlite, database file reseller.db.
+//   - Web: localStorage-backed in-memory store. expo-sqlite's sync API on web
+//     needs SharedArrayBuffer, which needs COOP/COEP headers that the Expo
+//     dev server does not send — it crashes at startup with
+//     "SharedArrayBuffer is not defined". So the web build never opens
+//     SQLite at all; items/settings live in localStorage instead. Same seed,
+//     same 192 items, same behaviour. Web changes do NOT sync to the phone
+//     (and vice versa) — the sheet is the shared source of truth in v1.
 
+import { Platform } from 'react-native';
 import * as SQLite from 'expo-sqlite';
 import { SEED_ITEMS } from './seed-data';
 import {
@@ -14,14 +25,122 @@ import {
 } from './types';
 
 const DB_NAME = 'reseller.db';
+const IS_WEB = Platform.OS === 'web';
 let db: SQLite.SQLiteDatabase | null = null;
 
 export function getDb(): SQLite.SQLiteDatabase {
+  if (IS_WEB) {
+    throw new Error('getDb is not available on web — the web build uses localStorage.');
+  }
   if (!db) db = SQLite.openDatabaseSync(DB_NAME);
   return db;
 }
 
+// ---------------------------------------------------------------------------
+// Web store (localStorage)
+// ---------------------------------------------------------------------------
+
+const WEB_ITEMS_KEY = 'reseller-hq-items-v1';
+const WEB_SETTINGS_KEY = 'reseller-hq-settings-v1';
+let webItems: Item[] | null = null;
+let webSettings: Settings | null = null;
+
+function webRead(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function webWrite(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Private mode / storage full: keep the in-memory copy, skip persisting.
+  }
+}
+
+function seedToItem(s: (typeof SEED_ITEMS)[number], now: string): Item {
+  return {
+    id: s.id,
+    name: s.name,
+    purchase: s.purchase,
+    estShip: s.estShip,
+    suggestedPrice: s.suggestedPrice,
+    minPrice: s.minPrice,
+    researchPrice: s.researchPrice,
+    notes: s.notes,
+    place: s.place,
+    datePurchased: s.datePurchased,
+    status: normaliseStatus(s.status),
+    dateListed: s.dateListed,
+    dateSold: s.dateSold,
+    soldPrice: s.soldPrice,
+    fees: s.fees,
+    shipping: s.shipping,
+    profit: s.profit,
+    revenue: s.revenue,
+    profitMargin: s.profitMargin,
+    location: '',
+    qrCode: qrFor(s.id),
+    photos: [],
+    whiteBgPhotos: [],
+    createdAt: now,
+  };
+}
+
+function webLoad(): void {
+  if (webItems !== null && webSettings !== null) return;
+  const now = new Date().toISOString();
+  const rawItems = webRead(WEB_ITEMS_KEY);
+  let loaded: Item[] | null = null;
+  if (rawItems) {
+    try {
+      const parsed: unknown = JSON.parse(rawItems);
+      if (Array.isArray(parsed) && parsed.length > 0) loaded = parsed as Item[];
+    } catch {
+      loaded = null;
+    }
+  }
+  webItems = loaded ?? SEED_ITEMS.map((s) => seedToItem(s, now));
+  if (!loaded) webWrite(WEB_ITEMS_KEY, JSON.stringify(webItems));
+  const rawSettings = webRead(WEB_SETTINGS_KEY);
+  if (rawSettings) {
+    try {
+      webSettings = { ...DEFAULT_SETTINGS, ...(JSON.parse(rawSettings) as Partial<Settings>) };
+    } catch {
+      webSettings = { ...DEFAULT_SETTINGS };
+    }
+  } else {
+    webSettings = { ...DEFAULT_SETTINGS };
+  }
+}
+
+function webSaveItems(): void {
+  if (webItems) webWrite(WEB_ITEMS_KEY, JSON.stringify(webItems));
+}
+
+function webSaveSettings(): void {
+  if (webSettings) webWrite(WEB_SETTINGS_KEY, JSON.stringify(webSettings));
+}
+
+function sortItems(items: Item[]): Item[] {
+  return [...items].sort(
+    (a, b) =>
+      b.datePurchased.localeCompare(a.datePurchased) || a.id.localeCompare(b.id),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shared API
+// ---------------------------------------------------------------------------
+
 export function initDb(): void {
+  if (IS_WEB) {
+    webLoad();
+    return;
+  }
   const d = getDb();
   d.execSync(`
     CREATE TABLE IF NOT EXISTS items (
@@ -127,6 +246,10 @@ function safeParse(json: string): string[] {
 }
 
 export function getAllItems(): Item[] {
+  if (IS_WEB) {
+    webLoad();
+    return sortItems(webItems as Item[]);
+  }
   const rows = getDb().getAllSync<ItemRow>(
     'SELECT * FROM items ORDER BY datePurchased DESC, id ASC',
   );
@@ -134,11 +257,21 @@ export function getAllItems(): Item[] {
 }
 
 export function getItem(id: string): Item | null {
+  if (IS_WEB) {
+    webLoad();
+    return (webItems as Item[]).find((it) => it.id === id) ?? null;
+  }
   const row = getDb().getFirstSync<ItemRow>('SELECT * FROM items WHERE id = ?', [id]);
   return row ? rowToItem(row) : null;
 }
 
 export function getCounts(): Record<string, number> {
+  if (IS_WEB) {
+    webLoad();
+    const out: Record<string, number> = {};
+    for (const it of webItems as Item[]) out[it.status] = (out[it.status] ?? 0) + 1;
+    return out;
+  }
   const rows = getDb().getAllSync<{ status: string; c: number }>(
     'SELECT status, COUNT(*) AS c FROM items GROUP BY status',
   );
@@ -148,6 +281,14 @@ export function getCounts(): Record<string, number> {
 }
 
 export function updateItem(id: string, patch: Partial<Item>): void {
+  if (IS_WEB) {
+    webLoad();
+    const idx = (webItems as Item[]).findIndex((it) => it.id === id);
+    if (idx < 0) return;
+    (webItems as Item[])[idx] = { ...(webItems as Item[])[idx], ...patch };
+    webSaveItems();
+    return;
+  }
   const current = getItem(id);
   if (!current) return;
   const next: Item = { ...current, ...patch };
@@ -233,6 +374,12 @@ export function addItem(input: {
     whiteBgPhotos: [],
     createdAt: new Date().toISOString(),
   };
+  if (IS_WEB) {
+    webLoad();
+    (webItems as Item[]).push(item);
+    webSaveItems();
+    return item;
+  }
   getDb().runSync(
     `INSERT INTO items (id, name, purchase, estShip, suggestedPrice, minPrice,
       researchPrice, notes, place, datePurchased, status, dateListed, dateSold,
@@ -270,6 +417,10 @@ export function addItem(input: {
 }
 
 export function getSettings(): Settings {
+  if (IS_WEB) {
+    webLoad();
+    return { ...(webSettings as Settings) };
+  }
   const rows = getDb().getAllSync<{ key: string; value: string }>(
     'SELECT key, value FROM settings',
   );
@@ -285,6 +436,12 @@ export function getSettings(): Settings {
 }
 
 export function saveSettings(s: Settings): void {
+  if (IS_WEB) {
+    webLoad();
+    webSettings = { ...s };
+    webSaveSettings();
+    return;
+  }
   const d = getDb();
   for (const [key, value] of Object.entries(s)) {
     d.runSync(
