@@ -102,6 +102,33 @@ export default function ItemScreen() {
     }
   };
 
+  const removePhoto = (uri: string) => {
+    Alert.alert('Remove photo?', 'This removes the photo from this item.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => {
+          const idx = item.photos.indexOf(uri);
+          const photos = item.photos.filter((p) => p !== uri);
+          // White-bg versions are appended in the same order as photos, so
+          // the matching one can only be removed by index when every photo
+          // so far produced one (arrays the same length). If some failed,
+          // the mapping is unknown, so leave them — except when the last
+          // photo goes, the white-bg versions are meaningless too.
+          let whiteBgPhotos = item.whiteBgPhotos;
+          if (idx >= 0 && item.photos.length === item.whiteBgPhotos.length) {
+            whiteBgPhotos = item.whiteBgPhotos.filter((_, i) => i !== idx);
+          }
+          if (photos.length === 0) whiteBgPhotos = [];
+          const next = { ...item, photos, whiteBgPhotos };
+          updateItem(item.id, next);
+          setItem(next);
+        },
+      },
+    ]);
+  };
+
   const changeStatus = (status: Item['status']) => {
     setStatus(item.id, status);
     refresh();
@@ -160,7 +187,17 @@ export default function ItemScreen() {
         <Text style={styles.cardTitle}>Photos ({item.photos.length})</Text>
         {item.photos.length === 0 && <Text style={styles.line}>No photos yet.</Text>}
         {item.photos.map((uri) => (
-          <Image key={uri} source={{ uri }} style={styles.photo} />
+          <View key={uri} style={styles.photoWrap}>
+            <Image source={{ uri }} style={styles.photo} />
+            <Pressable
+              style={styles.removeBtn}
+              onPress={() => removePhoto(uri)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Remove photo"
+            >
+              <Text style={styles.removeBtnText}>✕</Text>
+            </Pressable>
+          </View>
         ))}
         {item.whiteBgPhotos.length > 0 && (
           <Text style={styles.line}>White-bg versions: {item.whiteBgPhotos.length}</Text>
@@ -267,6 +304,20 @@ const styles = StyleSheet.create({
   notFoundText: { color: colors.text, fontSize: 16 },
   note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.sm },
   pass: { color: colors.success, fontWeight: '700' },
-  photo: { borderRadius: radius.sm, height: 240, marginTop: spacing.sm, width: '100%' },
+  photo: { borderRadius: radius.sm, height: 240, width: '100%' },
+  photoWrap: { marginTop: spacing.sm, position: 'relative' },
+  removeBtn: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 16,
+    height: 32,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 8,
+    top: 8,
+    width: 32,
+    zIndex: 1,
+  },
+  removeBtnText: { color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 20 },
   title: { color: colors.text, fontSize: 22, fontWeight: '700', lineHeight: 28 },
 });
