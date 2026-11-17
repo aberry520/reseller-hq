@@ -11,12 +11,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Link, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Link, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
+import { deleteItem, getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
 import { cleanName } from '../../src/lib/listing';
 import {
   ebayMargin,
@@ -53,6 +53,7 @@ const moneyStr = (n: number): string => (n > 0 ? String(n) : '');
 export default function ItemScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const [item, setItem] = useState<Item | null>(null);
   const [location, setLocation] = useState('');
   const [bgNote, setBgNote] = useState('');
@@ -258,6 +259,24 @@ export default function ItemScreen() {
   const saveLocation = () => {
     updateItem(item.id, { location });
     Alert.alert('Saved', `Location set to "${location || '(blank)'}"`);
+  };
+
+  const confirmDelete = () => {
+    Alert.alert(
+      'Remove item?',
+      `${item.name} will be permanently removed from Reseller HQ. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            deleteItem(item.id);
+            router.replace('/');
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -515,6 +534,13 @@ export default function ItemScreen() {
           <Text style={styles.btnText}>Generate listing draft →</Text>
         </Pressable>
       </Link>
+
+      <Pressable
+        style={StyleSheet.flatten([styles.btn, styles.deleteBtn])}
+        onPress={confirmDelete}
+      >
+        <Text style={styles.btnText}>Remove item</Text>
+      </Pressable>
     </ScrollView>
 
     <Modal
@@ -587,6 +613,7 @@ const styles = StyleSheet.create({
   },
   btnRow: { flexDirection: 'row', flexWrap: 'wrap' },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  deleteBtn: { backgroundColor: colors.danger, marginTop: spacing.lg },
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,

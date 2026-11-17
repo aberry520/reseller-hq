@@ -340,6 +340,16 @@ export function updateItem(id: string, patch: Partial<Item>): void {
   );
 }
 
+export function deleteItem(id: string): void {
+  if (IS_WEB) {
+    webLoad();
+    webItems = (webItems as Item[]).filter((it) => it.id !== id);
+    webSaveItems();
+    return;
+  }
+  getDb().runSync('DELETE FROM items WHERE id = ?', [id]);
+}
+
 export function setStatus(id: string, status: ItemStatus): void {
   const patch: Partial<Item> = { status };
   const today = new Date().toLocaleDateString('en-US');
