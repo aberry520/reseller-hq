@@ -125,7 +125,7 @@ export function computeDashboard(
   const sourcedItems = items.filter((it) => it.purchase > 0);
   const freeItems = items.filter((it) => it.purchase === 0);
   // Deleted expenses do not count toward spending.
-  const liveExpenses = expenses.filter((e) => e.status !== 'Deleted');
+  const liveExpenses = expenses.filter((e) => (e.status || '').trim() !== 'Deleted');
   // Sold = a sold price is recorded. Date Sold decides the range.
   const soldSourced = sourcedItems.filter((it) => it.soldPrice > 0);
   const soldFree = freeItems.filter((it) => it.soldPrice > 0);

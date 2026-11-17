@@ -62,7 +62,8 @@ export async function fetchExpenseRows(): Promise<Expense[]> {
     name: String(r.name ?? ''),
     price: Number(r.price ?? 0) || 0,
     date: String(r.date ?? ''),
-    status: String(r.status ?? ''),
+    // Trim so a status with stray whitespace still matches 'Deleted'.
+    status: String(r.status ?? '').trim(),
   }));
 }
 

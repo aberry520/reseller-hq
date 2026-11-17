@@ -129,7 +129,10 @@ export default function ExpensesScreen() {
       const rows = await fetchExpenseRows();
       replaceExpenses(rows);
       reload();
-      setNote(`Refreshed from the sheet: ${rows.length} expenses.`);
+      // The sheet keeps Deleted rows (so they can be restored); the count
+      // shown is the live ones only.
+      const live = rows.filter((r) => (r.status || '').trim() !== 'Deleted').length;
+      setNote(`Refreshed from the sheet: ${live} expenses.`);
     } catch (e) {
       setNote(`Could not reach the sheet: ${e instanceof Error ? e.message : 'error'}`);
     } finally {
@@ -144,7 +147,7 @@ export default function ExpensesScreen() {
     }
     Alert.alert(
       'Send expenses to the sheet?',
-      `This replaces the sheet's Expenses tab with the app's ${expenses.length} expenses. Rows only in the sheet will be lost.`,
+      `This replaces the sheet's Expenses tab with the app's ${expenses.filter((e) => (e.status || '').trim() !== 'Deleted').length} expenses. Rows only in the sheet will be lost.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -155,8 +158,12 @@ export default function ExpensesScreen() {
             setNote('');
             try {
               const r = await pushExpenseRows(getExpenses());
+              // r.count is the rows the server wrote (it keeps Deleted rows
+              // in the sheet so they can be restored); the count shown is
+              // the live ones only.
+              const live = getExpenses().filter((e) => (e.status || '').trim() !== 'Deleted').length;
               setNote(
-                `Sent to the sheet: ${r.count} expenses written.` +
+                `Sent to the sheet: ${live} expenses written.` +
                   (r.errors.length > 0 ? ` Errors: ${r.errors.slice(0, 3).join('; ')}` : ''),
               );
             } catch (e) {
@@ -172,8 +179,9 @@ export default function ExpensesScreen() {
 
   // Deleted expenses are hidden from the app (they live only in the
   // sheet). The full list (including Deleted) is what "Send to sheet"
-  // writes, so the sheet keeps them as Deleted.
-  const visible = expenses.filter((e) => e.status !== 'Deleted');
+  // writes, so the sheet keeps them as Deleted. The count shown is the
+  // live ones only.
+  const visible = expenses.filter((e) => (e.status || '').trim() !== 'Deleted');
   const total = visible.reduce((a, e) => a + e.price, 0);
 
   return (
