@@ -70,6 +70,9 @@ export default function ItemScreen() {
   const [soldStr, setSoldStr] = useState('');
   const [feesStr, setFeesStr] = useState('');
   const [shipStr, setShipStr] = useState('');
+  // "Mark as sold" prompt: sold price, fees, shipping, date sold.
+  const [soldModalVisible, setSoldModalVisible] = useState(false);
+  const [soldDateStr, setSoldDateStr] = useState('');
 
   // Fill the money fields when a different item is opened.
   useEffect(() => {
@@ -79,6 +82,7 @@ export default function ItemScreen() {
     setSoldStr(moneyStr(item.soldPrice));
     setFeesStr(moneyStr(item.fees));
     setShipStr(moneyStr(item.shipping));
+    setSoldDateStr(item.dateSold);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item?.id]);
 
@@ -118,6 +122,13 @@ export default function ItemScreen() {
   const marginAtSuggested = ebayMargin(suggested, allIn, item.estShip, settings.ebayFeePct);
   const profitAtSuggested = ebayProfit(suggested, allIn, item.estShip, settings.ebayFeePct);
   const ok = passesMargin(suggested, allIn, item.estShip, settings.ebayFeePct, settings.targetMarginPct);
+  // Actual sale numbers, shown instead of the suggested price once the
+  // item is sold. Computed live from the stored sold price / fees /
+  // shipping so the card is right even before Save costs runs.
+  const isSold = item.status === 'Sold';
+  const actualProfit = item.soldPrice > 0 ? item.soldPrice - allIn - item.fees - item.shipping : 0;
+  const actualMargin = item.soldPrice > 0 ? (actualProfit / item.soldPrice) * 100 : 0;
+  const actualRevenue = item.soldPrice > 0 ? item.soldPrice - item.fees - item.shipping : 0;
 
   // Margin calculator lives on its own screen now (Calculator, from the
   // inventory footer) — it is a generic tool, not tied to this item.
@@ -226,7 +237,50 @@ export default function ItemScreen() {
     setItem(next);
   };
 
+  // Marking an item Sold opens the sold-details prompt (sold price, fees,
+  // shipping, date sold) instead of flipping the status on its own. Tapping
+  // Sold again on an already-sold item reopens it to edit the details.
+  const openSoldModal = () => {
+    setSoldStr(moneyStr(item.soldPrice));
+    setFeesStr(moneyStr(item.fees));
+    setShipStr(moneyStr(item.shipping));
+    setSoldDateStr(item.dateSold || new Date().toLocaleDateString('en-US'));
+    setSoldModalVisible(true);
+  };
+
+  const saveSoldDetails = () => {
+    const soldPrice = parseMoney(soldStr);
+    const fees = parseMoney(feesStr);
+    const shipping = parseMoney(shipStr);
+    const dateSold = soldDateStr.trim() || new Date().toLocaleDateString('en-US');
+    const profit = soldPrice > 0 ? soldPrice - allIn - fees - shipping : 0;
+    const revenue = soldPrice > 0 ? soldPrice - fees - shipping : 0;
+    const profitMargin = soldPrice > 0 ? `${((profit / soldPrice) * 100).toFixed(1)}%` : '';
+    const next = {
+      ...item,
+      status: 'Sold' as const,
+      dateSold,
+      soldPrice,
+      fees,
+      shipping,
+      profit,
+      revenue,
+      profitMargin,
+    };
+    setStatus(item.id, 'Sold');
+    updateItem(item.id, next);
+    setItem(next);
+    pushItemsToSheetLive([next]);
+    setSoldModalVisible(false);
+    setStatusNote(`✓ Sold for ${formatMoney(soldPrice)}`);
+    setTimeout(() => setStatusNote(''), 3000);
+  };
+
   const changeStatus = (status: Item['status']) => {
+    if (status === 'Sold') {
+      openSoldModal();
+      return;
+    }
     // Persist first, then update local state immediately so the active chip
     // and the status in the header change on the same tap.
     setStatus(item.id, status);
@@ -235,7 +289,7 @@ export default function ItemScreen() {
       ...item,
       status,
       dateListed: status === 'Listed' ? today : item.dateListed,
-      dateSold: status === 'Sold' ? today : item.dateSold,
+      dateSold: item.dateSold,
     };
     setItem(next);
     // The sheet updates right away too (and pops up if offline).
@@ -254,7 +308,18 @@ export default function ItemScreen() {
     const profit = soldPrice > 0 ? soldPrice - costBasis - fees - shipping : 0;
     const revenue = soldPrice;
     const profitMargin = soldPrice > 0 ? `${((profit / soldPrice) * 100).toFixed(1)}%` : '';
-    const next = { ...item, purchase, estShip, soldPrice, fees, shipping, profit, revenue, profitMargin };
+    const next = {
+      ...item,
+      purchase,
+      estShip,
+      soldPrice,
+      fees,
+      shipping,
+      profit,
+      revenue,
+      profitMargin,
+      dateSold: soldDateStr.trim(),
+    };
     updateItem(item.id, next);
     setItem(next);
     pushItemsToSheetLive([next]);
@@ -316,52 +381,105 @@ export default function ItemScreen() {
       </Text>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Pricing (30% margin target, 13.6% eBay fee)</Text>
-        <View style={styles.hero}>
-          <Text style={styles.heroLabel}>Suggested eBay price</Text>
-          <Text style={styles.heroPrice}>{formatMoney(suggested)}</Text>
-          <Text style={[styles.pill, ok ? styles.pillPass : styles.pillFail]}>
-            {ok ? '✓ Passes 30% margin' : '✗ Below 30% margin — reprice or skip'}
-          </Text>
-          <Text style={styles.note}>
-            {item.researchPrice > 0
-              ? 'Based on your Research Price'
-              : 'From margin math (cost + shipping + fees)'}
-          </Text>
-        </View>
-        <View style={styles.tileGrid}>
-          <View style={styles.tile}>
-            <Text style={styles.tileLabel}>{applyMacBid ? 'Cost (all-in)' : 'Cost'}</Text>
-            <Text style={styles.tileValue}>{formatMoney(allIn)}</Text>
-            {applyMacBid && <Text style={styles.tileSub}>bid {formatMoney(item.purchase)}</Text>}
-          </View>
-          <View style={styles.tile}>
-            <Text style={styles.tileLabel}>Est. shipping</Text>
-            <Text style={styles.tileValue}>{formatMoney(item.estShip)}</Text>
-          </View>
-          <View style={styles.tile}>
-            <Text style={styles.tileLabel}>Min eBay price</Text>
-            <Text style={styles.tileValue}>{formatMoney(minEbay)}</Text>
-          </View>
-          <View style={styles.tile}>
-            <Text style={styles.tileLabel}>Facebook price</Text>
-            <Text style={styles.tileValue}>{formatMoney(fb)}</Text>
-            <Text style={styles.tileSub}>rounded up to $5</Text>
-          </View>
-          <View style={styles.tile}>
-            <Text style={styles.tileLabel}>Profit at suggested</Text>
-            <Text style={styles.tileValue}>{formatMoney(profitAtSuggested)}</Text>
-          </View>
-          <View style={styles.tile}>
-            <Text style={styles.tileLabel}>Margin at suggested</Text>
-            <Text style={styles.tileValue}>{(marginAtSuggested * 100).toFixed(1)}%</Text>
-          </View>
-        </View>
-        {item.soldPrice > 0 && (
-          <Text style={styles.line}>
-            Sold for {formatMoney(item.soldPrice)} · actual profit {formatMoney(item.profit)}
-            {item.profitMargin ? ` · margin ${item.profitMargin}` : ''}
-          </Text>
+        <Text style={styles.cardTitle}>
+          {isSold ? 'Sold' : 'Pricing (30% margin target, 13.6% eBay fee)'}
+        </Text>
+        {isSold ? (
+          <>
+            <View style={styles.hero}>
+              <Text style={styles.heroLabel}>
+                Sold for{item.dateSold ? ` · ${item.dateSold}` : ''}
+              </Text>
+              <Text style={styles.heroPrice}>{formatMoney(item.soldPrice)}</Text>
+              <Text
+                style={[
+                  styles.pill,
+                  actualProfit >= 0 ? styles.pillPass : styles.pillFail,
+                ]}
+              >
+                Profit {formatMoney(actualProfit)} · margin {actualMargin.toFixed(1)}%
+              </Text>
+            </View>
+            <View style={styles.tileGrid}>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>{applyMacBid ? 'Cost (all-in)' : 'Cost'}</Text>
+                <Text style={styles.tileValue}>{formatMoney(allIn)}</Text>
+                {applyMacBid && <Text style={styles.tileSub}>bid {formatMoney(item.purchase)}</Text>}
+              </View>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>Fees paid</Text>
+                <Text style={styles.tileValue}>{formatMoney(item.fees)}</Text>
+              </View>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>Shipping paid</Text>
+                <Text style={styles.tileValue}>{formatMoney(item.shipping)}</Text>
+              </View>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>Revenue</Text>
+                <Text style={styles.tileValue}>{formatMoney(actualRevenue)}</Text>
+              </View>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>Profit</Text>
+                <Text style={styles.tileValue}>{formatMoney(actualProfit)}</Text>
+              </View>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>Margin</Text>
+                <Text style={styles.tileValue}>{actualMargin.toFixed(1)}%</Text>
+              </View>
+            </View>
+            <Pressable style={styles.btn} onPress={openSoldModal}>
+              <Text style={styles.btnText}>Edit sold details</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <View style={styles.hero}>
+              <Text style={styles.heroLabel}>Suggested eBay price</Text>
+              <Text style={styles.heroPrice}>{formatMoney(suggested)}</Text>
+              <Text style={[styles.pill, ok ? styles.pillPass : styles.pillFail]}>
+                {ok ? '✓ Passes 30% margin' : '✗ Below 30% margin — reprice or skip'}
+              </Text>
+              <Text style={styles.note}>
+                {item.researchPrice > 0
+                  ? 'Based on your Research Price'
+                  : 'From margin math (cost + shipping + fees)'}
+              </Text>
+            </View>
+            <View style={styles.tileGrid}>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>{applyMacBid ? 'Cost (all-in)' : 'Cost'}</Text>
+                <Text style={styles.tileValue}>{formatMoney(allIn)}</Text>
+                {applyMacBid && <Text style={styles.tileSub}>bid {formatMoney(item.purchase)}</Text>}
+              </View>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>Est. shipping</Text>
+                <Text style={styles.tileValue}>{formatMoney(item.estShip)}</Text>
+              </View>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>Min eBay price</Text>
+                <Text style={styles.tileValue}>{formatMoney(minEbay)}</Text>
+              </View>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>Facebook price</Text>
+                <Text style={styles.tileValue}>{formatMoney(fb)}</Text>
+                <Text style={styles.tileSub}>rounded up to $5</Text>
+              </View>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>Profit at suggested</Text>
+                <Text style={styles.tileValue}>{formatMoney(profitAtSuggested)}</Text>
+              </View>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>Margin at suggested</Text>
+                <Text style={styles.tileValue}>{(marginAtSuggested * 100).toFixed(1)}%</Text>
+              </View>
+            </View>
+            {item.soldPrice > 0 && (
+              <Text style={styles.line}>
+                Sold for {formatMoney(item.soldPrice)} · actual profit {formatMoney(item.profit)}
+                {item.profitMargin ? ` · margin ${item.profitMargin}` : ''}
+              </Text>
+            )}
+          </>
         )}
       </View>
 
@@ -439,6 +557,19 @@ export default function ItemScreen() {
               onChangeText={setShipStr}
               keyboardType="decimal-pad"
               placeholder="0.00"
+              returnKeyType="done"
+            />
+          </View>
+          <View style={styles.moneyField}>
+            <Text style={styles.fieldLabel}>Date sold</Text>
+            <TextInput
+              style={styles.input}
+              value={soldDateStr}
+              onChangeText={setSoldDateStr}
+              placeholder="M/D/YYYY"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="numbers-and-punctuation"
               returnKeyType="done"
             />
           </View>
@@ -629,6 +760,85 @@ export default function ItemScreen() {
         </View>
       </View>
     </Modal>
+
+    <Modal
+      visible={soldModalVisible}
+      animationType="slide"
+      onRequestClose={() => setSoldModalVisible(false)}
+    >
+      <View style={[styles.modalWrap, { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xl }]}>
+        <Text style={styles.modalTitle}>Mark as sold</Text>
+        <Text style={styles.note}>
+          Enter what it actually sold for — the item card will show these sold details instead of
+          the suggested price.
+        </Text>
+        <View style={styles.moneyField}>
+          <Text style={styles.fieldLabel}>Sold price</Text>
+          <TextInput
+            style={styles.input}
+            value={soldStr}
+            onChangeText={setSoldStr}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+            returnKeyType="done"
+            autoFocus
+          />
+        </View>
+        <View style={styles.moneyField}>
+          <Text style={styles.fieldLabel}>Fees paid</Text>
+          <TextInput
+            style={styles.input}
+            value={feesStr}
+            onChangeText={setFeesStr}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+            returnKeyType="done"
+          />
+        </View>
+        <View style={styles.moneyField}>
+          <Text style={styles.fieldLabel}>Shipping paid</Text>
+          <TextInput
+            style={styles.input}
+            value={shipStr}
+            onChangeText={setShipStr}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+            returnKeyType="done"
+          />
+        </View>
+        <View style={styles.moneyField}>
+          <Text style={styles.fieldLabel}>Date sold</Text>
+          <TextInput
+            style={styles.input}
+            value={soldDateStr}
+            onChangeText={setSoldDateStr}
+            placeholder="M/D/YYYY"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="numbers-and-punctuation"
+            returnKeyType="done"
+          />
+        </View>
+        {parseMoney(soldStr) > 0 && (
+          <Text style={styles.line}>
+            Profit {formatMoney(parseMoney(soldStr) - allIn - parseMoney(feesStr) - parseMoney(shipStr))} ·{' '}
+            margin{' '}
+            {(((parseMoney(soldStr) - allIn - parseMoney(feesStr) - parseMoney(shipStr)) / parseMoney(soldStr)) * 100).toFixed(1)}%
+          </Text>
+        )}
+        <View style={styles.btnRow}>
+          <Pressable style={styles.btn} onPress={saveSoldDetails}>
+            <Text style={styles.btnText}>Save sold details</Text>
+          </Pressable>
+          <Pressable
+            style={StyleSheet.flatten([styles.btn, styles.cancelBtn])}
+            onPress={() => setSoldModalVisible(false)}
+          >
+            <Text style={styles.btnText}>Cancel</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
     </>
   );
 }
@@ -724,6 +934,9 @@ const styles = StyleSheet.create({
   },
   line: { color: colors.text, fontSize: 15, lineHeight: 21, marginTop: 6 },
   meta: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 6 },
+  modalTitle: { color: colors.text, fontSize: 22, fontWeight: '700', lineHeight: 28, marginBottom: spacing.sm },
+  modalWrap: { backgroundColor: colors.background, flex: 1, paddingHorizontal: spacing.lg },
+  cancelBtn: { backgroundColor: colors.muted },
   notFound: { paddingHorizontal: spacing.lg },
   notFoundText: { color: colors.text, fontSize: 16 },
   note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.sm },
