@@ -10,9 +10,9 @@
 // the chosen source. Every actionable item starts checked and can be
 // unchecked before applying, so nothing happens without approval.
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAllItems, getDeletedIds, getSettings, getSyncState, clearLocalData } from '../src/lib/db';
 import {
@@ -40,6 +40,9 @@ type Phase = 'idle' | 'checking' | 'ready' | 'applying' | 'done' | 'error';
 export default function SyncScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const autoCheck = params.auto === '1';
+  const autoRan = useRef(false);
   const [phase, setPhase] = useState<Phase>('idle');
   const [diff, setDiff] = useState<SyncDiff | null>(null);
   const [sheetRows, setSheetRows] = useState<SheetRow[]>([]);
@@ -89,6 +92,16 @@ export default function SyncScreen() {
     setSource(src);
     setChecked(defaultCheckedKeys(diff, src));
   };
+
+  // The banner's "Sync now" opens this screen with ?auto=1 — start the
+  // check right away so one tap begins the catch-up.
+  useEffect(() => {
+    if (autoCheck && !autoRan.current) {
+      autoRan.current = true;
+      check();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoCheck]);
 
   const toggle = (key: string) => {
     const next = new Set(checked);

@@ -19,6 +19,7 @@ import {
   getSettings,
   getSyncState,
   saveSyncState,
+  setOutOfSync,
   updateItem,
 } from './db';
 import {
@@ -213,6 +214,8 @@ export async function applySync(plan: SyncPlan): Promise<SyncResult> {
   for (const id of plan.trashAppIds) nowInSync.delete(id);
   for (const id of plan.skippedAppIds) nowInSync.delete(id);
   saveSyncState([...nowInSync], new Date().toISOString(), plan.source);
+  // A clean apply means the app and the sheet agree again.
+  if (result.errors.length === 0) setOutOfSync(false);
 
   return result;
 }
@@ -266,6 +269,7 @@ export async function overwriteAppFromSheet(): Promise<OverwriteResult> {
     }
   }
   saveSyncState(ids, new Date().toISOString(), getSyncState()?.source);
+  if (errors.length === 0) setOutOfSync(false);
   return { count: ids.length, errors };
 }
 
@@ -332,9 +336,11 @@ export function pushItemsToSheetLive(items: Item[]): void {
   pushItemsToSheet(toPush)
     .then(() => {
       offlineNoticeShown = false;
+      setOutOfSync(false);
     })
     .catch((e) => {
       if (isNotConfigured(e)) return;
+      setOutOfSync(true);
       if (offlineNoticeShown) return;
       offlineNoticeShown = true;
       const offline = isNetworkError(e);
@@ -360,6 +366,7 @@ export async function overwriteSheetFromApp(): Promise<OverwriteResult> {
     new Date().toISOString(),
     getSyncState()?.source,
   );
+  if ((data.errors ?? []).length === 0) setOutOfSync(false);
   return { count: data.written ?? items.length, errors: data.errors ?? [] };
 }
 

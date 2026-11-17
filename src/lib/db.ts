@@ -53,6 +53,7 @@ const WEB_ITEMS_KEY = 'reseller-hq-items-v1';
 const WEB_SETTINGS_KEY = 'reseller-hq-settings-v1';
 const WEB_TOMBSTONES_KEY = 'reseller-hq-tombstones-v1';
 const WEB_SYNC_STATE_KEY = 'reseller-hq-sync-state-v1';
+const WEB_OUT_OF_SYNC_KEY = 'reseller-hq-out-of-sync-v1';
 const WEB_FREE_ITEMS_KEY = 'reseller-hq-free-items-v1';
 const WEB_EXPENSES_KEY = 'reseller-hq-expenses-v1';
 // Set once the seed has run. After a deliberate clear (clearLocalData) this
@@ -542,6 +543,45 @@ export function saveSyncState(ids: string[], at: string, source?: SyncSource): v
   );
 }
 
+// ---------------------------------------------------------------------------
+// Out-of-sync flag: true when a sheet push failed (offline) and the app
+// has changes the sheet does not. Persisted so it survives restarts.
+// Set by the write-through (sync.ts) on a failed push; cleared when a
+// push or a sync apply succeeds. The banner and the transaction gate
+// read it; listeners let them update live without a reload.
+// ---------------------------------------------------------------------------
+
+const outOfSyncListeners = new Set<() => void>();
+
+export function onOutOfSyncChange(fn: () => void): () => void {
+  outOfSyncListeners.add(fn);
+  return () => {
+    outOfSyncListeners.delete(fn);
+  };
+}
+
+export function isOutOfSync(): boolean {
+  if (IS_WEB) {
+    return webRead(WEB_OUT_OF_SYNC_KEY) === '1';
+  }
+  const row = getDb().getFirstSync<{ value: string }>(
+    "SELECT value FROM settings WHERE key = '__outOfSync'",
+  );
+  return row?.value === '1';
+}
+
+export function setOutOfSync(v: boolean): void {
+  if (IS_WEB) {
+    webWrite(WEB_OUT_OF_SYNC_KEY, v ? '1' : '0');
+  } else {
+    getDb().runSync(
+      "INSERT INTO settings (key, value) VALUES ('__outOfSync', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      [v ? '1' : '0'],
+    );
+  }
+  for (const fn of outOfSyncListeners) fn();
+}
+
 export function setStatus(id: string, status: ItemStatus): void {
   const patch: Partial<Item> = { status };
   const today = new Date().toLocaleDateString('en-US');
@@ -846,6 +886,7 @@ export function clearAppItems(): void {
       window.localStorage.removeItem(WEB_ITEMS_KEY);
       window.localStorage.removeItem(WEB_TOMBSTONES_KEY);
       window.localStorage.removeItem(WEB_SYNC_STATE_KEY);
+      window.localStorage.removeItem(WEB_OUT_OF_SYNC_KEY);
       window.localStorage.setItem(WEB_SEEDED_KEY, '1');
     } catch {
       // Storage unavailable — the in-memory reset below still applies.
@@ -857,6 +898,7 @@ export function clearAppItems(): void {
   d.runSync('DELETE FROM items');
   d.runSync('DELETE FROM tombstones');
   d.runSync("DELETE FROM settings WHERE key = '__syncState'");
+  d.runSync("DELETE FROM settings WHERE key = '__outOfSync'");
   d.runSync(
     "INSERT INTO settings (key, value) VALUES ('__seeded', '1') ON CONFLICT(key) DO UPDATE SET value='1'",
   );

@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
 import { pushItemsToSheetLive } from '../../src/lib/sync';
+import { useOutOfSync } from '../../src/lib/useOutOfSync';
 import { cleanName } from '../../src/lib/listing';
 import {
   ebayMargin,
@@ -56,6 +57,7 @@ export default function ItemScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const outOfSync = useOutOfSync();
   const [item, setItem] = useState<Item | null>(null);
   const [location, setLocation] = useState('');
   const [bgNote, setBgNote] = useState('');
@@ -305,6 +307,12 @@ export default function ItemScreen() {
         {item.id} · {item.status} · {item.place || 'no source'} · bought{' '}
         {item.datePurchased || '—'}
       </Text>
+      {outOfSync && (
+        <Text style={styles.gateNote}>
+          The app and sheet are out of sync — sync first (tap Sync now in the banner above)
+          before changing this item.
+        </Text>
+      )}
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Pricing (30% margin target, 13.6% eBay fee)</Text>
@@ -434,7 +442,7 @@ export default function ItemScreen() {
             />
           </View>
         </View>
-        <Pressable style={styles.btn} onPress={saveCosts}>
+        <Pressable style={[styles.btn, outOfSync && styles.disabledBtn]} onPress={saveCosts} disabled={outOfSync}>
           <Text style={styles.btnText}>Save costs</Text>
         </Pressable>
         {costsNote !== '' && <Text style={[styles.note, styles.pass]}>{costsNote}</Text>}
@@ -506,7 +514,7 @@ export default function ItemScreen() {
           onChangeText={setLocation}
           returnKeyType="done"
         />
-        <Pressable style={styles.btn} onPress={saveLocation}>
+        <Pressable style={[styles.btn, outOfSync && styles.disabledBtn]} onPress={saveLocation} disabled={outOfSync}>
           <Text style={styles.btnText}>Save location</Text>
         </Pressable>
         {item.notes ? <Text style={styles.line}>Notes: {item.notes}</Text> : null}
@@ -518,8 +526,9 @@ export default function ItemScreen() {
           {ALL_STATUSES.map((s) => (
             <Pressable
               key={s}
-              style={[styles.statusChip, item.status === s && styles.statusChipActive]}
+              style={[styles.statusChip, item.status === s && styles.statusChipActive, outOfSync && styles.disabledBtn]}
               onPress={() => changeStatus(s)}
+              disabled={outOfSync}
               hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
             >
               <Text
@@ -547,8 +556,9 @@ export default function ItemScreen() {
       </Link>
 
       <Pressable
-        style={StyleSheet.flatten([styles.btn, styles.deleteBtn])}
+        style={StyleSheet.flatten([styles.btn, styles.deleteBtn, outOfSync && styles.disabledBtn])}
         onPress={confirmDelete}
+        disabled={outOfSync}
       >
         <Text style={styles.btnText}>Remove item</Text>
       </Pressable>
@@ -625,6 +635,8 @@ const styles = StyleSheet.create({
   btnRow: { flexDirection: 'row', flexWrap: 'wrap' },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   deleteBtn: { backgroundColor: colors.danger, marginTop: spacing.lg },
+  disabledBtn: { opacity: 0.5 },
+  gateNote: { color: colors.danger, fontSize: 14, fontWeight: '600', lineHeight: 20, marginTop: spacing.sm },
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,

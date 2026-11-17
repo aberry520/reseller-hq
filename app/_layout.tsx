@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { initDb } from '../src/lib/db';
+import SyncBanner from '../src/components/SyncBanner';
 
 // Root layout is a Stack. The (tabs) group holds the three tab pages
 // (Inventory, Tools, Settings); the detail and tool screens push on top
@@ -18,6 +19,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
+      <SyncBanner />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: '#fff' },

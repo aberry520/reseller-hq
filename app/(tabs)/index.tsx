@@ -16,6 +16,7 @@ import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAllItems, getCounts, setStatus } from '../../src/lib/db';
 import { pushItemsToSheetLive } from '../../src/lib/sync';
+import { useOutOfSync } from '../../src/lib/useOutOfSync';
 import { formatMoney } from '../../src/lib/pricing';
 import { parseDashboardDate } from '../../src/lib/dashboard';
 import { cleanName } from '../../src/lib/listing';
@@ -125,6 +126,7 @@ export default function InventoryScreen() {
   const router = useRouter();
   const [items, setItems] = useState<Item[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const outOfSync = useOutOfSync();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('All');
   const [sort, setSort] = useState<Sort>('id');
@@ -234,21 +236,23 @@ export default function InventoryScreen() {
                     setSelectMode(true);
                   }
                 }}
+                disabled={outOfSync}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 accessibilityLabel={selectMode ? 'Cancel selection' : 'Select items'}
               >
                 <Ionicons
                   name={selectMode ? 'close-outline' : 'checkbox-outline'}
                   size={24}
-                  color={colors.text}
+                  color={outOfSync ? colors.muted : colors.text}
                 />
               </Pressable>
               <Pressable
                 onPress={() => router.push('/add')}
+                disabled={outOfSync}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 accessibilityLabel="Add item"
               >
-                <Ionicons name="add" size={26} color={colors.text} />
+                <Ionicons name="add" size={26} color={outOfSync ? colors.muted : colors.text} />
               </Pressable>
             </View>
           ),
