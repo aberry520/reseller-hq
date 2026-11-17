@@ -33,6 +33,8 @@ check('ebayProfit(100, 40.13, 15)', ebayProfit(100, 40.13, 15), 31.27);
 check('ebayMargin(100, 40.13, 15)', ebayMargin(100, 40.13, 15), 0.3127);
 check('passesMargin(100, 40.13, 15)', passesMargin(100, 40.13, 15) ? 1 : 0, 1);
 check('passesMargin(80, 40.13, 15)', passesMargin(80, 40.13, 15) ? 1 : 0, 0);
+check('passesMargin at exactly 30.0% is a pass', passesMargin(71.41, 40.28, 0) ? 1 : 0, 1);
+check('passesMargin at 29.9% is still a fail', passesMargin(71.41, 40.35, 0) ? 1 : 0, 0);
 check('facebookPrice(100, 15)', facebookPrice(100, 15), 75);
 check('facebookPrice(100, 0)', facebookPrice(100, 0), 90);
 check('facebookPrice exact $70 stays $70', facebookPrice(70, 0, 0), 70);

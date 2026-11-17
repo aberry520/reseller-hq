@@ -69,6 +69,15 @@ export function ebayMargin(
   return ebayProfit(soldPrice, allInCost, shipCost, feePct) / soldPrice;
 }
 
+/**
+ * Margin as a percentage rounded to 1 decimal — the same precision the app
+ * displays. Compare on this, not the raw float: a true 30.0% can compute as
+ * 0.29995… and would otherwise read as a fail.
+ */
+export function marginPct(margin: number): number {
+  return Math.round(margin * 1000) / 10;
+}
+
 export function passesMargin(
   soldPrice: number,
   allInCost: number,
@@ -76,7 +85,7 @@ export function passesMargin(
   feePct = 0.136,
   targetMarginPct = 0.3,
 ): boolean {
-  return ebayMargin(soldPrice, allInCost, shipCost, feePct) >= targetMarginPct;
+  return marginPct(ebayMargin(soldPrice, allInCost, shipCost, feePct)) >= targetMarginPct * 100;
 }
 
 /** Facebook price: eBay price minus shipping and the eBay fee, rounded UP to the next $5. */

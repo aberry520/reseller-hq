@@ -146,6 +146,11 @@ export default function InventoryScreen() {
             <Text style={styles.footerBtnText}>Labels</Text>
           </Pressable>
         </Link>
+        <Link href="/calculator" asChild>
+          <Pressable style={styles.footerBtn}>
+            <Text style={styles.footerBtnText}>Calculator</Text>
+          </Pressable>
+        </Link>
         <Link href="/settings" asChild>
           <Pressable style={styles.footerBtn}>
             <Text style={styles.footerBtnText}>Settings</Text>
@@ -187,6 +192,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     borderTopWidth: 1,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
@@ -195,7 +201,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.primary,
     borderRadius: radius.sm,
-    flex: 1,
+    flexBasis: '31%',
+    flexGrow: 1,
     justifyContent: 'center',
     minHeight: minTouchHeight,
     paddingHorizontal: spacing.sm,

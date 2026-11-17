@@ -79,30 +79,6 @@ export default function ItemScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item?.id]);
 
-  // Calculator's own scratch fields — separate from the save fields above.
-  // Cost defaults to the saved cost for this item.
-  const [calcCost, setCalcCost] = useState('');
-  const [calcShip, setCalcShip] = useState('');
-  const [calcPrice, setCalcPrice] = useState('');
-  useEffect(() => {
-    if (!item) return;
-    const s = getSettings();
-    const costBasis = appliesMacBidFees(item)
-      ? macBidAllIn(item.purchase)
-      : item.purchase;
-    const sugg = suggestedEbayPrice(
-      costBasis,
-      item.estShip,
-      item.researchPrice,
-      s.ebayFeePct,
-      s.targetMarginPct,
-    );
-    setCalcCost(moneyStr(costBasis));
-    setCalcShip(moneyStr(item.estShip));
-    setCalcPrice(moneyStr(sugg));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item?.id]);
-
   const refresh = useCallback(() => {
     if (!id) return;
     const it = getItem(id);
@@ -140,13 +116,8 @@ export default function ItemScreen() {
   const profitAtSuggested = ebayProfit(suggested, allIn, item.estShip, settings.ebayFeePct);
   const ok = passesMargin(suggested, allIn, item.estShip, settings.ebayFeePct, settings.targetMarginPct);
 
-  // Margin calculator (its own card below, scratch only — never saved).
-  const cCost = parseMoney(calcCost);
-  const cShip = parseMoney(calcShip);
-  const cPrice = parseMoney(calcPrice);
-  const cFee = cPrice * settings.ebayFeePct;
-  const cProfit = cPrice - cFee - cCost - cShip;
-  const cMargin = cPrice > 0 ? cProfit / cPrice : 0;
+  // Margin calculator lives on its own screen now (Calculator, from the
+  // inventory footer) — it is a generic tool, not tied to this item.
 
   const takePhoto = async (fromCamera: boolean) => {
     const fn = fromCamera
@@ -440,64 +411,6 @@ export default function ItemScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Margin calculator</Text>
-        <Text style={styles.note}>
-          Scratch pad — changing these never saves anything. Cost starts at the saved cost.
-        </Text>
-        <View style={styles.moneyGrid}>
-          <View style={styles.moneyField}>
-            <Text style={styles.fieldLabel}>Cost</Text>
-            <TextInput
-              style={styles.input}
-              value={calcCost}
-              onChangeText={setCalcCost}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              returnKeyType="done"
-            />
-          </View>
-          <View style={styles.moneyField}>
-            <Text style={styles.fieldLabel}>Shipping</Text>
-            <TextInput
-              style={styles.input}
-              value={calcShip}
-              onChangeText={setCalcShip}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              returnKeyType="done"
-            />
-          </View>
-          <View style={styles.moneyField}>
-            <Text style={styles.fieldLabel}>Selling price</Text>
-            <TextInput
-              style={styles.input}
-              value={calcPrice}
-              onChangeText={setCalcPrice}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              returnKeyType="done"
-            />
-          </View>
-        </View>
-        {cPrice > 0 ? (
-          <View style={styles.calcBox}>
-            <Text style={[styles.calcMargin, cMargin >= 0.3 ? styles.pass : styles.fail]}>
-              {(cMargin * 100).toFixed(1)}% margin
-            </Text>
-            <Text style={styles.calcProfit}>Profit {formatMoney(cProfit)}</Text>
-            <Text style={styles.line}>Selling price {formatMoney(cPrice)}</Text>
-            <Text style={styles.line}>
-              eBay fee ({(settings.ebayFeePct * 100).toFixed(1)}%) −{formatMoney(cFee)}
-            </Text>
-            <Text style={styles.line}>Cost −{formatMoney(cCost)}</Text>
-            <Text style={styles.line}>Shipping −{formatMoney(cShip)}</Text>
-          </View>
-        ) : (
-          <Text style={styles.note}>Enter a selling price to see the margin.</Text>
-        )}
-      </View>
-
-      <View style={styles.card}>
         <Text style={styles.cardTitle}>Photos ({item.photos.length})</Text>
         <Text style={styles.note}>Photos are cropped square (1:1) for eBay — adjust the crop when you take one.</Text>
         {item.photos.length === 0 && <Text style={styles.line}>No photos yet.</Text>}
@@ -713,16 +626,6 @@ const styles = StyleSheet.create({
   moneyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   moneyField: { flexBasis: '47%', flexGrow: 1 },
   fieldLabel: { color: colors.muted, fontSize: 13, fontWeight: '600', marginBottom: 4 },
-  calcBox: {
-    backgroundColor: '#fff',
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    marginTop: spacing.md,
-    padding: spacing.md,
-  },
-  calcMargin: { fontSize: 30, fontWeight: '800', lineHeight: 36 },
-  calcProfit: { color: colors.text, fontSize: 19, fontWeight: '700', marginTop: 2 },
   switchRow: {
     alignItems: 'center',
     flexDirection: 'row',
