@@ -30,7 +30,8 @@ export default function ListingScreen() {
 
   const settings = getSettings();
   const isMacBid = item.place.toLowerCase().includes('mac');
-  const allIn = isMacBid ? macBidAllIn(item.purchase) : item.purchase;
+  const applyMacBid = isMacBid && settings.applyMacBidFees;
+  const allIn = applyMacBid ? macBidAllIn(item.purchase) : item.purchase;
   const ebayPrice = suggestedEbayPrice(
     allIn,
     item.estShip,

@@ -94,10 +94,13 @@ export default function ItemScreen() {
     );
   }
 
-  const isMacBid = item.place.toLowerCase().includes('mac');
-  // Purchase in the sheet is the winning bid for Mac.Bid lots.
-  const allIn = isMacBid ? macBidAllIn(item.purchase) : item.purchase;
   const settings = getSettings();
+  const isMacBid = item.place.toLowerCase().includes('mac');
+  // When the MAC.BID fees flag is on, a MAC.BID lot's cost is computed from
+  // the bid: (bid x 1.15 + $3) x 1.07. When it is off, the Cost entered on
+  // the item is used as-is — the total cost of goods.
+  const applyMacBid = isMacBid && settings.applyMacBidFees;
+  const allIn = applyMacBid ? macBidAllIn(item.purchase) : item.purchase;
   const minEbay = minEbayPrice(allIn, item.estShip, settings.ebayFeePct, settings.targetMarginPct);
   const suggested = suggestedEbayPrice(
     allIn,
@@ -111,12 +114,33 @@ export default function ItemScreen() {
   const profitAtSuggested = ebayProfit(suggested, allIn, item.estShip, settings.ebayFeePct);
   const ok = passesMargin(suggested, allIn, item.estShip, settings.ebayFeePct, settings.targetMarginPct);
 
-  // Live preview from the Costs & sale fields as they are typed.
+  // Live calculator from the Costs & sale fields as they are typed — every
+  // keystroke recomputes the numbers below, before anything is saved.
   const previewPurchase = parseMoney(cost);
+  const previewEstShip = parseMoney(estShipStr);
   const previewSold = parseMoney(soldStr);
   const previewFees = parseMoney(feesStr);
   const previewShip = parseMoney(shipStr);
-  const previewCostBasis = isMacBid ? macBidAllIn(previewPurchase) : previewPurchase;
+  const previewCostBasis = applyMacBid ? macBidAllIn(previewPurchase) : previewPurchase;
+  const liveSuggested = suggestedEbayPrice(
+    previewCostBasis,
+    previewEstShip,
+    item.researchPrice,
+    settings.ebayFeePct,
+    settings.targetMarginPct,
+  );
+  const liveProfitAtSuggested = ebayProfit(
+    liveSuggested,
+    previewCostBasis,
+    previewEstShip,
+    settings.ebayFeePct,
+  );
+  const liveMarginAtSuggested = ebayMargin(
+    liveSuggested,
+    previewCostBasis,
+    previewEstShip,
+    settings.ebayFeePct,
+  );
   const previewProfit = previewSold - previewCostBasis - previewFees - previewShip;
   const previewMargin = previewSold > 0 ? previewProfit / previewSold : 0;
 
@@ -127,12 +151,18 @@ export default function ItemScreen() {
     const result = await fn({
       mediaTypes: ['images'],
       quality: 0.85,
+      // Show the crop screen at capture time, locked to square (1:1) for
+      // eBay, so the framing can be adjusted before the photo is saved.
+      allowsEditing: true,
+      aspect: [1, 1],
     });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
-    // eBay displays best with square (1:1) images: center-crop to the
-    // shortest side so every photo saved is square. If the crop ever
-    // fails, keep the original so the photo is never lost.
+    // eBay displays best with square (1:1) images. The picker above already
+    // shows the square crop screen on the phone; this center-crop is the
+    // fallback (web ignores the picker's crop UI) so every photo saved is
+    // square either way. If the crop ever fails, keep the original so the
+    // photo is never lost.
     let uri = asset.uri;
     try {
       const side = Math.min(asset.width, asset.height);
@@ -239,7 +269,7 @@ export default function ItemScreen() {
     const soldPrice = parseMoney(soldStr);
     const fees = parseMoney(feesStr);
     const shipping = parseMoney(shipStr);
-    const costBasis = isMacBid ? macBidAllIn(purchase) : purchase;
+    const costBasis = applyMacBid ? macBidAllIn(purchase) : purchase;
     const profit = soldPrice > 0 ? soldPrice - costBasis - fees - shipping : 0;
     const revenue = soldPrice;
     const profitMargin = soldPrice > 0 ? `${((profit / soldPrice) * 100).toFixed(1)}%` : '';
@@ -287,9 +317,9 @@ export default function ItemScreen() {
         </View>
         <View style={styles.tileGrid}>
           <View style={styles.tile}>
-            <Text style={styles.tileLabel}>{isMacBid ? 'Cost (all-in)' : 'Cost'}</Text>
+            <Text style={styles.tileLabel}>{applyMacBid ? 'Cost (all-in)' : 'Cost'}</Text>
             <Text style={styles.tileValue}>{formatMoney(allIn)}</Text>
-            {isMacBid && <Text style={styles.tileSub}>bid {formatMoney(item.purchase)}</Text>}
+            {applyMacBid && <Text style={styles.tileSub}>bid {formatMoney(item.purchase)}</Text>}
           </View>
           <View style={styles.tile}>
             <Text style={styles.tileLabel}>Est. shipping</Text>
@@ -326,7 +356,9 @@ export default function ItemScreen() {
         <Text style={styles.note}>Same columns as the spreadsheet — edit, then save. Profit updates as you type.</Text>
         <View style={styles.moneyGrid}>
           <View style={styles.moneyField}>
-            <Text style={styles.fieldLabel}>Cost (bid / purchase)</Text>
+            <Text style={styles.fieldLabel}>
+              {applyMacBid ? 'Bid (MAC.BID)' : 'Total cost of goods'}
+            </Text>
             <TextInput
               style={styles.input}
               value={cost}
@@ -381,12 +413,20 @@ export default function ItemScreen() {
             />
           </View>
         </View>
-        {previewSold > 0 && (
-          <Text style={[styles.line, previewProfit >= 0 ? styles.pass : styles.fail]}>
-            Actual: profit {formatMoney(previewProfit)} · margin{' '}
-            {(previewMargin * 100).toFixed(1)}% · revenue {formatMoney(previewSold)}
+        <View style={styles.calcBox}>
+          <Text style={styles.calcTitle}>Live calculator — updates as you type</Text>
+          <Text style={styles.line}>
+            Suggested eBay {formatMoney(liveSuggested)} → profit{' '}
+            {formatMoney(liveProfitAtSuggested)} · margin{' '}
+            {(liveMarginAtSuggested * 100).toFixed(1)}%
           </Text>
-        )}
+          {previewSold > 0 && (
+            <Text style={[styles.line, previewProfit >= 0 ? styles.pass : styles.fail]}>
+              Sold at {formatMoney(previewSold)}: profit {formatMoney(previewProfit)} ·
+              margin {(previewMargin * 100).toFixed(1)}% · revenue {formatMoney(previewSold)}
+            </Text>
+          )}
+        </View>
         <Pressable style={styles.btn} onPress={saveCosts}>
           <Text style={styles.btnText}>Save costs</Text>
         </Pressable>
@@ -395,7 +435,7 @@ export default function ItemScreen() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Photos ({item.photos.length})</Text>
-        <Text style={styles.note}>Photos are cropped square (1:1) for eBay.</Text>
+        <Text style={styles.note}>Photos are cropped square (1:1) for eBay — adjust the crop when you take one.</Text>
         {item.photos.length === 0 && <Text style={styles.line}>No photos yet.</Text>}
         {item.photos.map((uri, i) => (
           <View key={uri} style={styles.photoWrap}>
@@ -609,6 +649,15 @@ const styles = StyleSheet.create({
   moneyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   moneyField: { flexBasis: '47%', flexGrow: 1 },
   fieldLabel: { color: colors.muted, fontSize: 13, fontWeight: '600', marginBottom: 4 },
+  calcBox: {
+    backgroundColor: '#fff',
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    marginTop: spacing.md,
+    padding: spacing.md,
+  },
+  calcTitle: { color: colors.muted, fontSize: 12, fontWeight: '700', marginBottom: 4 },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap' },
   statusChip: {
     alignItems: 'center',

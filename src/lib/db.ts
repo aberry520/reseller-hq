@@ -431,6 +431,7 @@ export function getSettings(): Settings {
     if (r.key === 'ebayFeePct') out.ebayFeePct = parseFloat(r.value) || 0.136;
     if (r.key === 'targetMarginPct') out.targetMarginPct = parseFloat(r.value) || 0.3;
     if (r.key === 'salesTaxPct') out.salesTaxPct = parseFloat(r.value) || 0.07;
+    if (r.key === 'applyMacBidFees') out.applyMacBidFees = r.value === 'true';
   }
   return out;
 }

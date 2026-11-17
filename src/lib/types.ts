@@ -77,6 +77,10 @@ export interface Settings {
   ebayFeePct: number; // 0.136
   targetMarginPct: number; // 0.30
   salesTaxPct: number; // 0.07 for Anderson, SC
+  // When true, a MAC.BID lot's cost is computed from the bid:
+  // (bid x 1.15 + $3) x 1.07. When false, the Cost entered on the item is
+  // used as-is — the total cost of goods, with no fees or tax added.
+  applyMacBidFees: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -85,6 +89,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ebayFeePct: 0.136,
   targetMarginPct: 0.3,
   salesTaxPct: 0.07,
+  applyMacBidFees: true,
 };
 
 export function normaliseStatus(raw: string): ItemStatus {
