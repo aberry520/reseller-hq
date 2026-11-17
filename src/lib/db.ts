@@ -452,17 +452,6 @@ export function updateItem(id: string, patch: Partial<Item>): void {
   );
 }
 
-export function deleteItem(id: string): void {
-  recordDeletedId(id);
-  if (IS_WEB) {
-    webLoad();
-    webItems = (webItems as Item[]).filter((it) => it.id !== id);
-    webSaveItems();
-    return;
-  }
-  getDb().runSync('DELETE FROM items WHERE id = ?', [id]);
-}
-
 // ---------------------------------------------------------------------------
 // Sync bookkeeping: tombstones (ids deleted in the app) and sync state
 // (which appIds were in sync with the sheet at the last successful apply).

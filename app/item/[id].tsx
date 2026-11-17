@@ -16,7 +16,7 @@ import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { deleteItem, getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
+import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
 import { cleanName } from '../../src/lib/listing';
 import {
   ebayMargin,
@@ -41,6 +41,7 @@ const ALL_STATUSES: Item['status'][] = [
   'Trash',
   'Return',
   'Trash Return',
+  'Deleted',
 ];
 
 const parseMoney = (s: string): number => {
@@ -264,14 +265,14 @@ export default function ItemScreen() {
   const confirmDelete = () => {
     Alert.alert(
       'Remove item?',
-      `${item.name} will be permanently removed from Reseller HQ. This cannot be undone.`,
+      `${item.name} will be marked Deleted. It will be hidden from the app but stay in the sheet, so you can restore it by changing its status in the sheet.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
-            deleteItem(item.id);
+            setStatus(item.id, 'Deleted');
             router.replace('/');
           },
         },

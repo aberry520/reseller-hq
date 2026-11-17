@@ -34,7 +34,8 @@ export default function LabelsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const all = getAllItems();
+      // Deleted items live only in the sheet — they are not listed here.
+      const all = getAllItems().filter((it) => it.status !== 'Deleted');
       setItems(all);
       setSelected(
         new Set(all.filter((it) => it.status === 'Draft' || it.status === 'Unlisted').map((it) => it.id)),

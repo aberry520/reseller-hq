@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { deleteItem, getAllItems, getCounts } from '../../src/lib/db';
+import { getAllItems, getCounts, setStatus } from '../../src/lib/db';
 import { formatMoney } from '../../src/lib/pricing';
 import { parseDashboardDate } from '../../src/lib/dashboard';
 import { cleanName } from '../../src/lib/listing';
@@ -154,15 +154,20 @@ export default function InventoryScreen() {
     router.push(`/item/${id}`);
   }, []);
 
+  // Deleted items are hidden from the app (they live only in the sheet
+  // until restored). Everything below — the count, the filters, the
+  // multi-select — works on the visible items only.
+  const visible = useMemo(() => items.filter((it) => it.status !== 'Deleted'), [items]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = items.filter(
+    const list = visible.filter(
       (it) =>
         matchesFilter(it, filter) &&
         (q === '' || cleanName(it.name).toLowerCase().includes(q) || it.id.toLowerCase() === q),
     );
     return sortList(list, sort);
-  }, [items, query, filter, sort]);
+  }, [visible, query, filter, sort]);
 
   const sortLabel = SORTS.find((s) => s.key === sort)?.short ?? 'ID';
 
@@ -191,14 +196,14 @@ export default function InventoryScreen() {
     if (n === 0) return;
     Alert.alert(
       `Remove ${n} item${n === 1 ? '' : 's'}?`,
-      'They will be permanently removed from Reseller HQ. This cannot be undone.',
+      'They will be marked Deleted: hidden from the app, but kept in the sheet so they can be restored.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
-            for (const id of selected) deleteItem(id);
+            for (const id of selected) setStatus(id, 'Deleted');
             setItems(getAllItems());
             setCounts(getCounts());
             exitSelectMode();
@@ -245,7 +250,7 @@ export default function InventoryScreen() {
       <View style={[styles.container, { paddingTop: spacing.sm }]}>
       <View style={styles.summary}>
         <Text style={styles.summaryText}>
-          {items.length} items · {toList} to list · {counts['Listed'] ?? 0} listed ·{' '}
+          {visible.length} items · {toList} to list · {counts['Listed'] ?? 0} listed ·{' '}
           {counts['Sold'] ?? 0} sold
         </Text>
       </View>
@@ -364,7 +369,7 @@ export default function InventoryScreen() {
             disabled={selected.size === 0}
             onPress={confirmDeleteSelected}
           >
-            <Text style={styles.footerBtnText}>Delete ({selected.size})</Text>
+            <Text style={styles.footerBtnText}>Remove ({selected.size})</Text>
           </Pressable>
           <Pressable style={styles.footerBtn} onPress={selectAllVisible}>
             <Text style={styles.footerBtnText}>Select all</Text>

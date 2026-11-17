@@ -256,6 +256,45 @@ check(
     uncheckedPlan.restoreRows.length === 1,
 );
 
+// 11. Deleted rows live only in the sheet and are never imported.
+// A sheet row with status Deleted and no matching app item is not
+// "new in sheet".
+const deletedRow = makeRow({ appId: 'RB-099', row: 99, status: 'Deleted' });
+const deletedDiff = computeDiff([], [deletedRow], { tombstones: [], syncedIds: [] });
+check(
+  'Deleted sheet row is not offered as new in sheet',
+  deletedDiff.sheetOnly.length === 0 &&
+    deletedDiff.appOnly.length === 0 &&
+    deletedDiff.changed.length === 0,
+);
+
+// 12. Restoring a Deleted item: the app has it as Deleted, the sheet
+// has it back as Draft — that is a "changed" item, so Sheet wins
+// restores it and App wins re-deletes it.
+const deletedItem = makeItem({ id: 'RB-100', status: 'Deleted' });
+const restoredRow = makeRow({ appId: 'RB-100', row: 100, status: 'Draft' });
+const restoreDiff = computeDiff([deletedItem], [restoredRow], {
+  tombstones: [],
+  syncedIds: ['RB-100'],
+});
+check(
+  'sheet-side restore of a Deleted item shows as changed',
+  restoreDiff.changed.length === 1 &&
+    restoreDiff.changed[0].diffs.some((d) => d.field === 'Status'),
+);
+
+// 13. A Deleted item that matches the sheet (both Deleted) is no diff.
+const bothDeletedDiff = computeDiff([deletedItem], [makeRow({ appId: 'RB-100', row: 100, status: 'Deleted' })], {
+  tombstones: [],
+  syncedIds: ['RB-100'],
+});
+check(
+  'Deleted item matching a Deleted sheet row is no diff',
+  bothDeletedDiff.changed.length === 0 &&
+    bothDeletedDiff.sheetOnly.length === 0 &&
+    bothDeletedDiff.appOnly.length === 0,
+);
+
 if (failures > 0) throw new Error(`${failures} sync-diff check(s) failed`);
 // eslint-disable-next-line no-console
 console.log('Sync-diff checks done.');

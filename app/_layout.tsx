@@ -23,6 +23,9 @@ export default function RootLayout() {
           headerStyle: { backgroundColor: '#fff' },
           headerTintColor: '#1f2328',
           headerTitleStyle: { fontSize: 17, fontWeight: '700' },
+          // The back button otherwise reads "(tabs)" — the route name of
+          // the tab group the detail screens push from.
+          headerBackTitle: 'Back',
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

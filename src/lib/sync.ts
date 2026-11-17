@@ -26,7 +26,7 @@ import {
   SheetRow,
   SyncPlan,
 } from './sync-diff';
-import { Expense, Item } from './types';
+import { Expense, Item, normaliseStatus } from './types';
 
 export type { SheetRow, SyncPlan } from './sync-diff';
 
@@ -229,6 +229,7 @@ export interface OverwriteResult {
 // Replace everything in the app with the sheet's rows. Rows that already
 // have an App ID keep it; rows without one get a new RB-xxx, which is
 // stamped back to the sheet so the next merge sync does not re-import them.
+// Deleted rows are skipped: they live only in the sheet.
 export async function overwriteAppFromSheet(): Promise<OverwriteResult> {
   const rows = await fetchSheetRows();
   const settings = getSettings();
@@ -237,6 +238,7 @@ export async function overwriteAppFromSheet(): Promise<OverwriteResult> {
   const ids: string[] = [];
   const assignIds: Array<{ row: number; appId: string }> = [];
   for (const sheet of rows) {
+    if (normaliseStatus(sheet.status) === 'Deleted') continue;
     try {
       const created = addItem({
         id: sheet.appId || undefined,

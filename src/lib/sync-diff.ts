@@ -268,6 +268,12 @@ export function computeDiff(
     // A row whose App ID was deleted in the app is "deleted in app"
     // (→ Trash in the sheet), never "new in sheet" — the tombstone wins.
     if (r.appId && tombstones.has(r.appId)) return false;
+    // A Deleted row lives only in the sheet and is never imported into
+    // the app — unless it is restored there first (status changed back
+    // to something else), in which case it is a normal "new in sheet"
+    // row again. (A Deleted row the app already has is matched above,
+    // so a sheet-side restore shows up as a "changed" item.)
+    if (normaliseStatus(r.status) === 'Deleted') return false;
     // Rows with no App ID (added to the sheet before ever syncing) are new.
     if (!r.appId) return true;
     // Rows whose App ID the app doesn't know are new too.
@@ -289,6 +295,13 @@ export function computeDiff(
 //            items take the sheet's version, items deleted in the app are
 //            restored from their sheet row (same RB-xxx). App-only items
 //            are left alone (listed for awareness, not pushed).
+// Removing an item in the app does NOT delete it — it sets status
+// 'Deleted' (a soft delete). That flows through as an ordinary status
+// change, so the sheet shows Deleted and the app hides the item; sheet
+// rows with status Deleted are never imported (see computeDiff), so a
+// Deleted item stays sheet-only until its status is changed back in the
+// sheet, which restores it on the next sync. The tombstone path below is
+// only for items permanently deleted before soft-delete existed.
 // The preview shows what will happen; every actionable item starts checked
 // and can be unchecked before applying, so nothing happens without approval.
 // ---------------------------------------------------------------------------

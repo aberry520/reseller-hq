@@ -19,7 +19,8 @@ export type ItemStatus =
   | 'Unlisted'
   | 'Trash'
   | 'Return'
-  | 'Trash Return';
+  | 'Trash Return'
+  | 'Deleted';
 
 export interface SeedItem {
   id: string; // RHQ-000001, RHQ-000002, ... in seed order — stable, used in QR codes
@@ -103,6 +104,7 @@ export function normaliseStatus(raw: string): ItemStatus {
   const s = (raw || '').trim();
   if (s === '') return 'Unlisted';
   if (s === 'Trash Return') return 'Trash Return';
+  if (s === 'Deleted') return 'Deleted';
   if (s === 'Sold' || s === 'Listed' || s === 'Draft' || s === 'Trash' || s === 'Return') {
     return s;
   }
