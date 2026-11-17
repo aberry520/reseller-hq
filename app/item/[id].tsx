@@ -207,7 +207,7 @@ export default function ItemScreen() {
       </View>
 
       <Link href={`/listing/${item.id}`} asChild>
-        <Pressable style={[styles.btn, styles.bigBtn]}>
+        <Pressable style={StyleSheet.flatten([styles.btn, styles.bigBtn])}>
           <Text style={styles.btnText}>Generate listing draft →</Text>
         </Pressable>
       </Link>
