@@ -1,4 +1,13 @@
-# Reseller HQ — Web label printer
+# Reseller HQ — Web label printer (superseded by Expo web)
+
+> **Use the Expo web version instead — same app, no separate server.**
+> Run `npx expo start --web` from the repo root and open the Labels tab in
+> your browser. It has the same bulk buttons (Select All / Select To List /
+> Clear), Save ZPL (downloads `labels.zpl` on web) and Export PDF (opens the
+> browser print dialog — pick the Zebra GC420T). This standalone page is kept
+> only as a fallback; it still works, but you don't need to run it.
+>
+> The instructions below are for this fallback page only.
 
 Print QR labels for your inventory from your Windows PC, straight to the
 Zebra GC420T you already have set up in Windows Printers & Devices.
