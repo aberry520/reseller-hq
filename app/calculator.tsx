@@ -29,7 +29,10 @@ export default function CalculatorScreen() {
   // price; type 0 for a sale with no fee (local pickup, Facebook).
   const feeBlank = feeStr.trim() === '';
   const cFee = feeBlank ? cPrice * settings.ebayFeePct : parseMoney(feeStr);
-  const cProfit = cPrice - cFee - cCost - cShip;
+  // Revenue is what the sale brings in after the fee and shipping are paid:
+  // selling price − fee − shipping. Profit is revenue minus the cost.
+  const cRevenue = cPrice - cFee - cShip;
+  const cProfit = cRevenue - cCost;
   const cMarginPct = cPrice > 0 ? marginPct(cProfit / cPrice) : 0;
   const ok = cMarginPct >= settings.targetMarginPct * 100;
 
@@ -106,15 +109,16 @@ export default function CalculatorScreen() {
               {cMarginPct.toFixed(1)}% margin
             </Text>
             <Text style={styles.calcProfit}>Profit {formatMoney(cProfit)}</Text>
-            <Text style={styles.calcProfit}>Revenue {formatMoney(cPrice)}</Text>
+            <Text style={styles.calcProfit}>Revenue {formatMoney(cRevenue)}</Text>
+            <Text style={styles.line}>Selling price {formatMoney(cPrice)}</Text>
             <Text style={styles.line}>
               {feeBlank
                 ? `Fee (${(settings.ebayFeePct * 100).toFixed(1)}% eBay)`
                 : 'Fee'}{' '}
               −{formatMoney(cFee)}
             </Text>
-            <Text style={styles.line}>Cost −{formatMoney(cCost)}</Text>
             <Text style={styles.line}>Shipping −{formatMoney(cShip)}</Text>
+            <Text style={styles.line}>Cost −{formatMoney(cCost)}</Text>
           </View>
         ) : (
           <Text style={styles.note}>Enter a selling price to see the margin.</Text>

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  Alert,
   FlatList,
   Image,
   Pressable,
@@ -11,7 +12,7 @@ import {
 import { Link, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getAllItems, getCounts } from '../src/lib/db';
+import { deleteItem, getAllItems, getCounts } from '../src/lib/db';
 import { formatMoney } from '../src/lib/pricing';
 import { cleanName } from '../src/lib/listing';
 import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
@@ -63,6 +64,25 @@ export default function InventoryScreen() {
 
   const toList = (counts['Draft'] ?? 0) + (counts['Unlisted'] ?? 0);
 
+  const confirmDelete = (item: Item) => {
+    Alert.alert(
+      'Remove item?',
+      `${cleanName(item.name)} will be permanently removed from Reseller HQ. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            deleteItem(item.id);
+            setItems(getAllItems());
+            setCounts(getCounts());
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
       <View style={styles.summary}>
@@ -99,35 +119,45 @@ export default function InventoryScreen() {
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={<Text style={styles.empty}>No items match this filter.</Text>}
         renderItem={({ item }) => (
-          <Link href={`/item/${item.id}`} asChild>
-            <Pressable style={styles.row} hitSlop={{ top: 4, bottom: 4 }}>
-              {item.photos.length > 0 ? (
-                <Image source={{ uri: item.photos[0] }} style={styles.thumb} />
-              ) : (
-                <View style={styles.thumbPlaceholder}>
-                  <Text style={styles.thumbPlaceholderText}>No{'\n'}photo</Text>
+          <View style={styles.rowWrap}>
+            <Link href={`/item/${item.id}`} asChild>
+              <Pressable style={styles.row} hitSlop={{ top: 4, bottom: 4 }}>
+                {item.photos.length > 0 ? (
+                  <Image source={{ uri: item.photos[0] }} style={styles.thumb} />
+                ) : (
+                  <View style={styles.thumbPlaceholder}>
+                    <Text style={styles.thumbPlaceholderText}>No{'\n'}photo</Text>
+                  </View>
+                )}
+                <View style={styles.rowMain}>
+                  <Text style={styles.rowName} numberOfLines={2}>
+                    {cleanName(item.name)}
+                  </Text>
+                  <Text style={styles.rowMeta}>
+                    {item.id} · bought {formatMoney(item.purchase)}
+                    {item.suggestedPrice > 0 ? ` · suggested ${formatMoney(item.suggestedPrice)}` : ''}
+                    {item.place ? ` · ${item.place}` : ''}
+                  </Text>
                 </View>
-              )}
-              <View style={styles.rowMain}>
-                <Text style={styles.rowName} numberOfLines={2}>
-                  {cleanName(item.name)}
+                <Text
+                  style={[
+                    styles.badge,
+                    { backgroundColor: BADGE_COLORS[item.status] ?? '#656d76' },
+                  ]}
+                >
+                  {item.status}
                 </Text>
-                <Text style={styles.rowMeta}>
-                  {item.id} · bought {formatMoney(item.purchase)}
-                  {item.suggestedPrice > 0 ? ` · suggested ${formatMoney(item.suggestedPrice)}` : ''}
-                  {item.place ? ` · ${item.place}` : ''}
-                </Text>
-              </View>
-              <Text
-                style={[
-                  styles.badge,
-                  { backgroundColor: BADGE_COLORS[item.status] ?? '#656d76' },
-                ]}
-              >
-                {item.status}
-              </Text>
+              </Pressable>
+            </Link>
+            <Pressable
+              style={styles.rowDelete}
+              onPress={() => confirmDelete(item)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel={`Remove ${cleanName(item.name)}`}
+            >
+              <Text style={styles.rowDeleteText}>✕</Text>
             </Pressable>
-          </Link>
+          </View>
         )}
       />
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
@@ -212,12 +242,25 @@ const styles = StyleSheet.create({
   listContent: { paddingBottom: spacing.md },
   row: {
     alignItems: 'center',
-    borderBottomColor: colors.divider,
-    borderBottomWidth: 1,
+    flex: 1,
     flexDirection: 'row',
     minHeight: 68,
     paddingHorizontal: spacing.lg,
     paddingVertical: 14,
+  },
+  rowDelete: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: minTouchHeight,
+    minWidth: minTouchHeight,
+    paddingHorizontal: spacing.sm,
+  },
+  rowDeleteText: { color: colors.danger, fontSize: 18, fontWeight: '700' },
+  rowWrap: {
+    alignItems: 'center',
+    borderBottomColor: colors.divider,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
   },
   rowMain: { flex: 1, marginRight: spacing.sm },
   rowMeta: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.xs },
