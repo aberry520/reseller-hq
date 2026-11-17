@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -56,6 +57,8 @@ export default function ItemScreen() {
   const [busy, setBusy] = useState(false);
   const [statusNote, setStatusNote] = useState('');
   const [costsNote, setCostsNote] = useState('');
+  // Full-screen photo viewer: index into item.photos, null = closed.
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   // Editable money fields, mirroring the spreadsheet columns.
   const [cost, setCost] = useState('');
   const [estShipStr, setEstShipStr] = useState('');
@@ -253,6 +256,7 @@ export default function ItemScreen() {
   };
 
   return (
+    <>
     <ScrollView
       style={styles.container}
       contentContainerStyle={[
@@ -395,7 +399,9 @@ export default function ItemScreen() {
         {item.photos.length === 0 && <Text style={styles.line}>No photos yet.</Text>}
         {item.photos.map((uri, i) => (
           <View key={uri} style={styles.photoWrap}>
-            <Image source={{ uri }} style={styles.photo} />
+            <Pressable onPress={() => setViewerIndex(i)} accessibilityLabel="Open photo full screen">
+              <Image source={{ uri }} style={styles.photo} />
+            </Pressable>
             <Pressable
               style={styles.removeBtn}
               onPress={() => removePhoto(uri)}
@@ -493,6 +499,59 @@ export default function ItemScreen() {
         </Pressable>
       </Link>
     </ScrollView>
+
+    <Modal
+      visible={viewerIndex !== null}
+      animationType="fade"
+      onRequestClose={() => setViewerIndex(null)}
+    >
+      <View style={styles.viewer}>
+        <View style={[styles.viewerTop, { paddingTop: insets.top + spacing.sm }]}>
+          <Text style={styles.viewerCount}>
+            {viewerIndex !== null ? `${viewerIndex + 1} of ${item.photos.length}` : ''}
+          </Text>
+          <Pressable
+            style={styles.viewerClose}
+            onPress={() => setViewerIndex(null)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Close photo"
+          >
+            <Text style={styles.viewerCloseText}>✕</Text>
+          </Pressable>
+        </View>
+        {viewerIndex !== null && (
+          <Image
+            source={{ uri: item.photos[viewerIndex] }}
+            style={styles.viewerImage}
+            resizeMode="contain"
+          />
+        )}
+        <View style={[styles.viewerNav, { paddingBottom: insets.bottom + spacing.md }]}>
+          <Pressable
+            style={[styles.viewerNavBtn, viewerIndex === 0 && styles.viewerNavBtnDisabled]}
+            disabled={viewerIndex === 0}
+            onPress={() => setViewerIndex((i) => (i === null ? i : Math.max(0, i - 1)))}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Text style={styles.viewerNavText}>‹ Prev</Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.viewerNavBtn,
+              viewerIndex === item.photos.length - 1 && styles.viewerNavBtnDisabled,
+            ]}
+            disabled={viewerIndex === item.photos.length - 1}
+            onPress={() =>
+              setViewerIndex((i) => (i === null ? i : Math.min(item.photos.length - 1, i + 1)))
+            }
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Text style={styles.viewerNavText}>Next ›</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -615,4 +674,38 @@ const styles = StyleSheet.create({
   },
   removeBtnText: { color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 20 },
   title: { color: colors.text, fontSize: 22, fontWeight: '700', lineHeight: 28 },
+  viewer: { backgroundColor: '#000', flex: 1 },
+  viewerTop: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+  },
+  viewerCount: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  viewerClose: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 18,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  viewerCloseText: { color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 20 },
+  viewerImage: { flex: 1, width: '100%' },
+  viewerNav: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  viewerNavBtn: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: radius.sm,
+    justifyContent: 'center',
+    minHeight: minTouchHeight,
+    paddingHorizontal: spacing.lg,
+  },
+  viewerNavBtnDisabled: { opacity: 0.35 },
+  viewerNavText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
