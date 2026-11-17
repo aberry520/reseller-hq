@@ -24,6 +24,8 @@
 //                  mark deleted items Trash. (Default when no action given.)
 //        overwrite { rows } — replace the whole tab with the given rows.
 //        clear     {} — delete all data rows, keep the header.
+//        overwriteExpenses { rows } — replace the Expenses tab with the
+//                  given rows (the Expenses page's "Send to sheet").
 //
 // Columns are found by HEADER TEXT, not by letter, and the header row is
 // found by scanning the first few rows — so a sheet works as long as it has
@@ -403,6 +405,32 @@ function doPost(e) {
     var err = checkToken_(body.token);
     if (err) return json_({ error: err });
     var action = body.action || 'merge';
+    // Expenses is its own tab with its own columns (Item, Price, Date,
+    // Status) and no App ID, so it is written by whole-list replace, not
+    // by the inventory merge below.
+    if (action === 'overwriteExpenses') {
+      var expSheet = openTab_('Expenses');
+      var expMap = colMap_(expSheet, EXPENSES_BY_HEADER, ['Item', 'Price']);
+      clearData_(expSheet, expMap);
+      var expRows = body.rows || [];
+      var expWritten = 0;
+      var expErrors = [];
+      for (var i = 0; i < expRows.length; i++) {
+        try {
+          var er = expRows[i];
+          var eRow = expMap.headerRow + 1 + i;
+          if (expMap.cols.name) expSheet.getRange(eRow, expMap.cols.name).setValue(er.name || '');
+          if (expMap.cols.price) expSheet.getRange(eRow, expMap.cols.price).setValue(num_(er.price));
+          if (expMap.cols.date) expSheet.getRange(eRow, expMap.cols.date).setValue(parseDate_(er.date));
+          if (expMap.cols.status) expSheet.getRange(eRow, expMap.cols.status).setValue(er.status || '');
+          expWritten++;
+        } catch (ex) {
+          expErrors.push('row ' + (i + 1) + ': ' + String(ex));
+        }
+      }
+      return json_({ ok: true, written: expWritten, errors: expErrors });
+    }
+
     var tab = body.tab || SHEET_NAME;
     var sheet = openTab_(tab);
     var map = colMap_(sheet, FIELD_BY_HEADER, REQUIRED_HEADERS);

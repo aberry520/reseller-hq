@@ -8,8 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 
 type Tool = {
-  href: '/calculator' | '/scan' | '/labels' | '/sync';
-  icon: 'calculator-outline' | 'scan-outline' | 'pricetag-outline' | 'sync-outline';
+  href: '/calculator' | '/scan' | '/labels' | '/sync' | '/expenses';
+  icon: 'calculator-outline' | 'scan-outline' | 'pricetag-outline' | 'sync-outline' | 'receipt-outline';
   title: string;
   desc: string;
 };
@@ -37,7 +37,13 @@ const TOOLS: Tool[] = [
     href: '/sync',
     icon: 'sync-outline',
     title: 'Sheet sync',
-    desc: 'Compare the app with the Purchase sheet and apply only what you approve.',
+    desc: 'Compare the app with the Inventory sheet and apply only what you approve.',
+  },
+  {
+    href: '/expenses',
+    icon: 'receipt-outline',
+    title: 'Expenses',
+    desc: 'Tape, MacBid fees, payouts — and sync them with the sheet\u2019s Expenses tab.',
   },
 ];
 

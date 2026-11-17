@@ -25,9 +25,10 @@ type Filter = 'All' | 'To List' | 'Listed' | 'Sold' | 'Draft' | 'Trash';
 
 const FILTERS: Filter[] = ['All', 'To List', 'Listed', 'Sold', 'Draft', 'Trash'];
 
-type Sort = 'newest' | 'oldest' | 'name' | 'costAsc' | 'costDesc' | 'priceDesc';
+type Sort = 'id' | 'newest' | 'oldest' | 'name' | 'costAsc' | 'costDesc' | 'priceDesc';
 
 const SORTS: Array<{ key: Sort; label: string; short: string }> = [
+  { key: 'id', label: 'ID: low to high', short: 'ID' },
   { key: 'newest', label: 'Newest first', short: 'Newest' },
   { key: 'oldest', label: 'Oldest first', short: 'Oldest' },
   { key: 'name', label: 'Name A–Z', short: 'Name A–Z' },
@@ -42,8 +43,14 @@ function sortList(list: Item[], sort: Sort): Item[] {
     const d = parseDashboardDate(it.datePurchased);
     return d ? d.getTime() : 0;
   };
+  const idNum = (it: Item) => {
+    const m = it.id.match(/(\d+)$/);
+    return m ? parseInt(m[1], 10) : 0;
+  };
   const byId = (a: Item, b: Item) => a.id.localeCompare(b.id);
   switch (sort) {
+    case 'id':
+      return out.sort((a, b) => idNum(a) - idNum(b) || byId(a, b));
     case 'newest':
       return out.sort((a, b) => dateVal(b) - dateVal(a) || byId(a, b));
     case 'oldest':
@@ -119,7 +126,7 @@ export default function InventoryScreen() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('All');
-  const [sort, setSort] = useState<Sort>('newest');
+  const [sort, setSort] = useState<Sort>('id');
   const [sortOpen, setSortOpen] = useState(false);
   // Multi-select delete: tap Select, tick the boxes, Delete removes them all.
   const [selectMode, setSelectMode] = useState(false);
@@ -157,7 +164,7 @@ export default function InventoryScreen() {
     return sortList(list, sort);
   }, [items, query, filter, sort]);
 
-  const sortLabel = SORTS.find((s) => s.key === sort)?.short ?? 'Newest';
+  const sortLabel = SORTS.find((s) => s.key === sort)?.short ?? 'ID';
 
   const toList = (counts['Draft'] ?? 0) + (counts['Unlisted'] ?? 0);
 

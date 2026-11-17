@@ -266,6 +266,22 @@ export async function overwriteAppFromSheet(): Promise<OverwriteResult> {
   return { count: ids.length, errors };
 }
 
+// Replace the sheet's Expenses tab with the app's expenses. The Expenses
+// tab has no App ID column, so this is a whole-list replace (the same
+// "update sheet from app" idea as the inventory overwrite), not a merge.
+export async function pushExpenseRows(expenses: Expense[]): Promise<OverwriteResult> {
+  const data = await postSync({
+    action: 'overwriteExpenses',
+    rows: expenses.map((e) => ({
+      name: e.name,
+      price: e.price,
+      date: e.date,
+      status: e.status,
+    })),
+  });
+  return { count: data.written ?? expenses.length, errors: data.errors ?? [] };
+}
+
 // Replace the whole sheet tab with the app's items.
 export async function overwriteSheetFromApp(): Promise<OverwriteResult> {
   const items = getAllItems();

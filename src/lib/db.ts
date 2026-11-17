@@ -738,6 +738,68 @@ export function replaceExpenses(items: Expense[]): void {
   }
 }
 
+function nextExpenseId(all: Expense[]): string {
+  const maxNum = all.reduce((m, e) => {
+    const n = parseInt(e.id.replace('EX-', ''), 10);
+    return Number.isFinite(n) && n > m ? n : m;
+  }, 0);
+  return `EX-${String(maxNum + 1).padStart(3, '0')}`;
+}
+
+export function addExpense(input: {
+  name: string;
+  price: number;
+  date: string;
+  status?: string;
+}): Expense {
+  const expense: Expense = {
+    id: nextExpenseId(getExpenses()),
+    name: input.name,
+    price: input.price,
+    date: input.date,
+    status: input.status ?? '',
+  };
+  if (IS_WEB) {
+    webLoad();
+    (webExpenses as Expense[]).push(expense);
+    webWrite(WEB_EXPENSES_KEY, JSON.stringify(webExpenses));
+    return expense;
+  }
+  getDb().runSync(
+    'INSERT INTO expenses (id, name, price, date, status) VALUES (?, ?, ?, ?, ?)',
+    [expense.id, expense.name, expense.price, expense.date, expense.status],
+  );
+  return expense;
+}
+
+export function updateExpense(id: string, patch: Partial<Expense>): void {
+  if (IS_WEB) {
+    webLoad();
+    const idx = (webExpenses as Expense[]).findIndex((e) => e.id === id);
+    if (idx < 0) return;
+    (webExpenses as Expense[])[idx] = { ...(webExpenses as Expense[])[idx], ...patch };
+    webWrite(WEB_EXPENSES_KEY, JSON.stringify(webExpenses));
+    return;
+  }
+  const current = getDb().getFirstSync<Expense>('SELECT * FROM expenses WHERE id = ?', [id]);
+  if (!current) return;
+  const next: Expense = { ...current, ...patch };
+  getDb().runSync(
+    'UPDATE expenses SET name=?, price=?, date=?, status=? WHERE id=?',
+    [next.name, next.price, next.date, next.status, id],
+  );
+}
+
+export function deleteExpense(id: string): void {
+  if (IS_WEB) {
+    webLoad();
+    webExpenses = (webExpenses as Expense[]).filter((e) => e.id !== id);
+    webWrite(WEB_EXPENSES_KEY, JSON.stringify(webExpenses));
+    return;
+  }
+  getDb().runSync('DELETE FROM expenses WHERE id = ?', [id]);
+}
+
 export function getSettings(): Settings {
   if (IS_WEB) {
     webLoad();

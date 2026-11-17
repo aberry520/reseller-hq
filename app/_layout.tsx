@@ -33,6 +33,7 @@ export default function RootLayout() {
         <Stack.Screen name="labels" options={{ title: 'QR labels' }} />
         <Stack.Screen name="calculator" options={{ title: 'Margin calculator' }} />
         <Stack.Screen name="sync" options={{ title: 'Sheet sync' }} />
+        <Stack.Screen name="expenses" options={{ title: 'Expenses' }} />
       </Stack>
     </SafeAreaProvider>
   );
