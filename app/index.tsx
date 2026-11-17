@@ -39,12 +39,47 @@ function matchesFilter(item: Item, filter: Filter): boolean {
   return item.status === filter;
 }
 
+function RowContent({ item }: { item: Item }) {
+  return (
+    <>
+      {item.photos.length > 0 ? (
+        <Image source={{ uri: item.photos[0] }} style={styles.thumb} />
+      ) : (
+        <View style={styles.thumbPlaceholder}>
+          <Text style={styles.thumbPlaceholderText}>No{'\n'}photo</Text>
+        </View>
+      )}
+      <View style={styles.rowMain}>
+        <Text style={styles.rowName} numberOfLines={2}>
+          {cleanName(item.name)}
+        </Text>
+        <Text style={styles.rowMeta}>
+          {item.id} · bought {formatMoney(item.purchase)}
+          {item.suggestedPrice > 0 ? ` · suggested ${formatMoney(item.suggestedPrice)}` : ''}
+          {item.place ? ` · ${item.place}` : ''}
+        </Text>
+      </View>
+      <Text
+        style={[
+          styles.badge,
+          { backgroundColor: BADGE_COLORS[item.status] ?? '#656d76' },
+        ]}
+      >
+        {item.status}
+      </Text>
+    </>
+  );
+}
+
 export default function InventoryScreen() {
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<Item[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('To List');
+  // Multi-select delete: tap Select, tick the boxes, Delete removes them all.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   useFocusEffect(
     useCallback(() => {
@@ -64,19 +99,40 @@ export default function InventoryScreen() {
 
   const toList = (counts['Draft'] ?? 0) + (counts['Unlisted'] ?? 0);
 
-  const confirmDelete = (item: Item) => {
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelected(new Set());
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => {
+    setSelected(new Set(filtered.map((it) => it.id)));
+  };
+
+  const confirmDeleteSelected = () => {
+    const n = selected.size;
+    if (n === 0) return;
     Alert.alert(
-      'Remove item?',
-      `${cleanName(item.name)} will be permanently removed from Reseller HQ. This cannot be undone.`,
+      `Remove ${n} item${n === 1 ? '' : 's'}?`,
+      'They will be permanently removed from Reseller HQ. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
-            deleteItem(item.id);
+            for (const id of selected) deleteItem(id);
             setItems(getAllItems());
             setCounts(getCounts());
+            exitSelectMode();
           },
         },
       ],
@@ -86,10 +142,19 @@ export default function InventoryScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
       <View style={styles.summary}>
-        <Text style={styles.summaryText}>
+        <Text style={styles.summaryText} numberOfLines={1}>
           {items.length} items · {toList} to list · {counts['Listed'] ?? 0} listed ·{' '}
           {counts['Sold'] ?? 0} sold
         </Text>
+        <Pressable
+          style={styles.selectBtn}
+          onPress={() => {
+            setSelected(new Set());
+            setSelectMode(true);
+          }}
+        >
+          <Text style={styles.selectBtnText}>Select</Text>
+        </Pressable>
       </View>
       <TextInput
         style={styles.search}
@@ -118,75 +183,80 @@ export default function InventoryScreen() {
         contentContainerStyle={styles.listContent}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={<Text style={styles.empty}>No items match this filter.</Text>}
-        renderItem={({ item }) => (
-          <View style={styles.rowWrap}>
-            <Link href={`/item/${item.id}`} asChild>
-              <Pressable style={styles.row} hitSlop={{ top: 4, bottom: 4 }}>
-                {item.photos.length > 0 ? (
-                  <Image source={{ uri: item.photos[0] }} style={styles.thumb} />
-                ) : (
-                  <View style={styles.thumbPlaceholder}>
-                    <Text style={styles.thumbPlaceholderText}>No{'\n'}photo</Text>
-                  </View>
-                )}
-                <View style={styles.rowMain}>
-                  <Text style={styles.rowName} numberOfLines={2}>
-                    {cleanName(item.name)}
-                  </Text>
-                  <Text style={styles.rowMeta}>
-                    {item.id} · bought {formatMoney(item.purchase)}
-                    {item.suggestedPrice > 0 ? ` · suggested ${formatMoney(item.suggestedPrice)}` : ''}
-                    {item.place ? ` · ${item.place}` : ''}
-                  </Text>
+        renderItem={({ item }) => {
+          if (selectMode) {
+            const isSelected = selected.has(item.id);
+            return (
+              <Pressable style={styles.rowWrap} onPress={() => toggleSelect(item.id)}>
+                <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
+                  {isSelected && <Text style={styles.checkMark}>✓</Text>}
                 </View>
-                <Text
-                  style={[
-                    styles.badge,
-                    { backgroundColor: BADGE_COLORS[item.status] ?? '#656d76' },
-                  ]}
-                >
-                  {item.status}
-                </Text>
+                <View style={styles.row}>
+                  <RowContent item={item} />
+                </View>
               </Pressable>
-            </Link>
-            <Pressable
-              style={styles.rowDelete}
-              onPress={() => confirmDelete(item)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel={`Remove ${cleanName(item.name)}`}
-            >
-              <Text style={styles.rowDeleteText}>✕</Text>
-            </Pressable>
-          </View>
-        )}
+            );
+          }
+          return (
+            <View style={styles.rowWrap}>
+              <Link href={`/item/${item.id}`} asChild>
+                <Pressable style={styles.row} hitSlop={{ top: 4, bottom: 4 }}>
+                  <RowContent item={item} />
+                </Pressable>
+              </Link>
+            </View>
+          );
+        }}
       />
-      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
-        <Link href="/scan" asChild>
-          <Pressable style={styles.footerBtn}>
-            <Text style={styles.footerBtnText}>Scan QR</Text>
+      {selectMode ? (
+        <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
+          <Pressable
+            style={[
+              styles.footerBtn,
+              styles.deleteFooterBtn,
+              selected.size === 0 && styles.disabledBtn,
+            ]}
+            disabled={selected.size === 0}
+            onPress={confirmDeleteSelected}
+          >
+            <Text style={styles.footerBtnText}>Delete ({selected.size})</Text>
           </Pressable>
-        </Link>
-        <Link href="/add" asChild>
-          <Pressable style={styles.footerBtn}>
-            <Text style={styles.footerBtnText}>+ Add item</Text>
+          <Pressable style={styles.footerBtn} onPress={selectAllVisible}>
+            <Text style={styles.footerBtnText}>Select all</Text>
           </Pressable>
-        </Link>
-        <Link href="/labels" asChild>
-          <Pressable style={styles.footerBtn}>
-            <Text style={styles.footerBtnText}>Labels</Text>
+          <Pressable style={styles.footerBtn} onPress={exitSelectMode}>
+            <Text style={styles.footerBtnText}>Cancel</Text>
           </Pressable>
-        </Link>
-        <Link href="/calculator" asChild>
-          <Pressable style={styles.footerBtn}>
-            <Text style={styles.footerBtnText}>Calculator</Text>
-          </Pressable>
-        </Link>
-        <Link href="/settings" asChild>
-          <Pressable style={styles.footerBtn}>
-            <Text style={styles.footerBtnText}>Settings</Text>
-          </Pressable>
-        </Link>
-      </View>
+        </View>
+      ) : (
+        <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
+          <Link href="/scan" asChild>
+            <Pressable style={styles.footerBtn}>
+              <Text style={styles.footerBtnText}>Scan QR</Text>
+            </Pressable>
+          </Link>
+          <Link href="/add" asChild>
+            <Pressable style={styles.footerBtn}>
+              <Text style={styles.footerBtnText}>+ Add item</Text>
+            </Pressable>
+          </Link>
+          <Link href="/labels" asChild>
+            <Pressable style={styles.footerBtn}>
+              <Text style={styles.footerBtnText}>Labels</Text>
+            </Pressable>
+          </Link>
+          <Link href="/calculator" asChild>
+            <Pressable style={styles.footerBtn}>
+              <Text style={styles.footerBtnText}>Calculator</Text>
+            </Pressable>
+          </Link>
+          <Link href="/settings" asChild>
+            <Pressable style={styles.footerBtn}>
+              <Text style={styles.footerBtnText}>Settings</Text>
+            </Pressable>
+          </Link>
+        </View>
+      )}
     </View>
   );
 }
@@ -248,20 +318,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: 14,
   },
-  rowDelete: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: minTouchHeight,
-    minWidth: minTouchHeight,
-    paddingHorizontal: spacing.sm,
-  },
-  rowDeleteText: { color: colors.danger, fontSize: 18, fontWeight: '700' },
   rowWrap: {
     alignItems: 'center',
     borderBottomColor: colors.divider,
     borderBottomWidth: 1,
     flexDirection: 'row',
   },
+  checkbox: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: 6,
+    borderWidth: 2,
+    height: 26,
+    justifyContent: 'center',
+    marginLeft: spacing.lg,
+    width: 26,
+  },
+  checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkMark: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  deleteFooterBtn: { backgroundColor: colors.danger },
+  disabledBtn: { opacity: 0.5 },
+  selectBtn: {
+    alignItems: 'center',
+    backgroundColor: colors.chip,
+    borderRadius: 18,
+    justifyContent: 'center',
+    minHeight: 36,
+    paddingHorizontal: spacing.md,
+  },
+  selectBtnText: { color: colors.text, fontSize: 14, fontWeight: '700' },
   rowMain: { flex: 1, marginRight: spacing.sm },
   rowMeta: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.xs },
   thumb: { borderRadius: radius.sm, height: 64, marginRight: spacing.sm, width: 64 },
@@ -288,6 +373,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  summary: { backgroundColor: colors.card, paddingHorizontal: spacing.lg, paddingVertical: 10 },
-  summaryText: { color: colors.text, fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  summary: {
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
+  },
+  summaryText: { color: colors.text, flex: 1, fontSize: 14, fontWeight: '600', lineHeight: 20, marginRight: spacing.sm },
 });
