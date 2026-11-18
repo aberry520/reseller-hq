@@ -18,6 +18,7 @@ import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as MediaLibrary from 'expo-media-library';
 import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
 import { pushItemsToSheetLive } from '../../src/lib/sync';
 import { cleanName } from '../../src/lib/listing';
@@ -349,6 +350,38 @@ export default function ItemScreen() {
     setItem(next);
     setViewerIndex(0);
     viewerListRef.current?.scrollToIndex({ index: 0, animated: false });
+  };
+
+  // Crop with the system picker's crop UI — the same square crop you get
+  // when choosing a photo. The picker only crops at pick time, so the photo
+  // is saved to the device library first, then the library picker opens
+  // with editing on: tap the photo (it's the most recent) and crop it.
+  // If the library permission is denied (or the save fails), fall back to
+  // the built-in crop editor.
+  const cropWithPicker = async () => {
+    if (viewerIndex === null) return;
+    const uri = item.photos[viewerIndex];
+    if (!uri) return;
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status !== 'granted') {
+      setEditorVisible(true);
+      return;
+    }
+    try {
+      await MediaLibrary.createAssetAsync(uri);
+    } catch {
+      setEditorVisible(true);
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+    if (!result.canceled && result.assets[0]?.uri) {
+      onCropDone(result.assets[0].uri);
+    }
   };
 
   // Crop editor result: the edited image's URI. Replace the photo with
@@ -881,7 +914,7 @@ export default function ItemScreen() {
           <View style={[styles.viewerActions, { paddingBottom: insets.bottom + spacing.md }]}>
             <Pressable
               style={styles.viewerActionBtn}
-              onPress={() => setEditorVisible(true)}
+              onPress={() => void cropWithPicker()}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
               <Text style={styles.viewerActionText}>Crop</Text>
@@ -918,7 +951,8 @@ export default function ItemScreen() {
       </View>
     </Modal>
 
-    {/* Crop editor for the photo in the viewer (square, for eBay). */}
+    {/* Built-in crop editor — fallback when the system picker crop can't
+        run (photo library permission denied or the save fails). */}
     <CropEditor
       visible={editorVisible}
       imageUri={viewerIndex !== null ? item.photos[viewerIndex] : undefined}

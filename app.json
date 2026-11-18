@@ -31,7 +31,16 @@
           "photosPermission": "Allow Reseller HQ to access your photos so you can add product photos to listings."
         }
       ],
-      "expo-sharing"
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Reseller HQ to access your photos so you can crop a product photo with the system photo editor.",
+          "savePhotosPermission": "Allow Reseller HQ to save a product photo to your library so you can crop it with the system photo editor."
+        }
+      ],
+      "expo-sharing",
+      "expo-asset",
+      "@react-native-community/datetimepicker"
     ],
     "scheme": "reseller",
     "slug": "reseller-hq",
