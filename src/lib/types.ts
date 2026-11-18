@@ -76,7 +76,26 @@ export interface Item {
   photos: string[]; // local URIs
   whiteBgPhotos: string[]; // local URIs after background removal
   createdAt: string;
+  // eBay draft fields, set per item in the app (not synced to the
+  // Inventory tab — the sheet has no columns for them). Used when
+  // generating rows for the ebay-draft tab.
+  ebayCategoryId: string; // eBay category number, e.g. '21139'
+  ebayCondition: string; // eBay condition name, e.g. 'Used - Good'
 }
+
+// eBay condition names accepted by the bulk draft template. Default for
+// a new item is 'Used - Good' (same as listingDescription).
+export const EBAY_CONDITIONS = [
+  'New',
+  'Open box',
+  'Used - Like New',
+  'Used - Very Good',
+  'Used - Good',
+  'Used - Acceptable',
+  'For parts or not working',
+] as const;
+
+export const DEFAULT_EBAY_CONDITION = 'Used - Good';
 
 export interface Settings {
   bgRemoverUrl: string;

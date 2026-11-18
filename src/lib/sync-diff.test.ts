@@ -12,6 +12,7 @@ import {
   SheetRow,
 } from './sync-diff';
 import { DEFAULT_SETTINGS, idFromQr, Item } from './types';
+import { ebayDraftMissing, ebayDraftRow } from './listing';
 
 let failures = 0;
 
@@ -48,6 +49,8 @@ function makeItem(over: Partial<Item> = {}): Item {
     photos: [],
     whiteBgPhotos: [],
     createdAt: '2026-11-17T00:00:00.000Z',
+    ebayCategoryId: '',
+    ebayCondition: 'Used - Good',
     ...over,
   };
 }
@@ -325,6 +328,36 @@ check(
     idFromQr('reseller://item/FR-012') === 'FR-012' &&
     idFromQr('not a code') === null &&
     idFromQr('reseller://item/') === null,
+);
+
+// 15. eBay draft rows match the template's 11 columns in order, and an
+// item without a Category ID is flagged as not ready to send.
+const draftItem = makeItem({
+  id: 'RHQ-000042',
+  name: 'Test Widget',
+  suggestedPrice: 44.99,
+  ebayCategoryId: '21139',
+  ebayCondition: 'New',
+});
+const draftRow = ebayDraftRow(draftItem);
+check(
+  'ebayDraftRow matches the template columns',
+  draftRow.length === 11 &&
+    draftRow[0] === 'Draft' &&
+    draftRow[1] === 'RHQ-000042' &&
+    draftRow[2] === '21139' &&
+    draftRow[3] === 'Test Widget' &&
+    draftRow[4] === '' &&
+    draftRow[5] === '44.99' &&
+    draftRow[6] === '1' &&
+    draftRow[7] === '' &&
+    draftRow[8] === 'New' &&
+    draftRow[10] === 'FixedPrice',
+);
+check(
+  'ebayDraftMissing flags a missing Category ID',
+  ebayDraftMissing(makeItem({ ebayCategoryId: '', suggestedPrice: 44.99 })).join(',') === 'Category ID' &&
+    ebayDraftMissing(draftItem).length === 0,
 );
 
 if (failures > 0) throw new Error(`${failures} sync-diff check(s) failed`);

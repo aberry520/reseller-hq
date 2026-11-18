@@ -11,7 +11,7 @@ import { join } from 'node:path';
 
 const out = mkdtempSync(join(tmpdir(), 'sync-diff-verify-'));
 execSync(
-  `npx tsc --ignoreConfig src/lib/sync-diff.ts src/lib/sync-diff.test.ts --outDir "${out}" --module commonjs --target es2020 --esModuleInterop --skipLibCheck`,
+  `npx tsc --ignoreConfig src/lib/sync-diff.ts src/lib/sync-diff.test.ts src/lib/listing.ts src/lib/types.ts src/lib/pricing.ts --outDir "${out}" --module commonjs --target es2020 --esModuleInterop --skipLibCheck`,
   { stdio: 'inherit' },
 );
 execSync(`node "${join(out, 'sync-diff.test.js')}"`, { stdio: 'inherit' });

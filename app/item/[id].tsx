@@ -34,7 +34,7 @@ import {
 import { removeBackground } from '../../src/services/bg-remover';
 import DateField from '../../src/components/DateField';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
-import { appliesMacBidFees } from '../../src/lib/types';
+import { appliesMacBidFees, DEFAULT_EBAY_CONDITION, EBAY_CONDITIONS } from '../../src/lib/types';
 import type { Item } from '../../src/lib/types';
 
 const ALL_STATUSES: Item['status'][] = [
@@ -78,6 +78,11 @@ export default function ItemScreen() {
   const [busy, setBusy] = useState(false);
   const [statusNote, setStatusNote] = useState('');
   const [costsNote, setCostsNote] = useState('');
+  // eBay draft fields (per item): category ID + condition, used when
+  // sending the item to the ebay-draft tab.
+  const [ebayCategoryId, setEbayCategoryId] = useState('');
+  const [ebayCondition, setEbayCondition] = useState(DEFAULT_EBAY_CONDITION);
+  const [ebayNote, setEbayNote] = useState('');
   // Full-screen photo viewer: index into item.photos, null = closed.
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const viewerListRef = useRef<FlatList<string> | null>(null);
@@ -107,7 +112,11 @@ export default function ItemScreen() {
     if (!id) return;
     const it = getItem(id);
     setItem(it);
-    if (it) setLocation(it.location);
+    if (it) {
+      setLocation(it.location);
+      setEbayCategoryId(it.ebayCategoryId ?? '');
+      setEbayCondition(it.ebayCondition ?? DEFAULT_EBAY_CONDITION);
+    }
   }, [id]);
 
   useFocusEffect(refresh);
@@ -444,6 +453,17 @@ export default function ItemScreen() {
     Alert.alert('Saved', `Location set to "${location || '(blank)'}"`);
   };
 
+  // eBay draft fields are app-only (the sheet has no columns for them),
+  // so they are saved locally only — no sheet push.
+  const saveEbay = () => {
+    const cat = ebayCategoryId.trim();
+    const cond = ebayCondition || DEFAULT_EBAY_CONDITION;
+    updateItem(item.id, { ebayCategoryId: cat, ebayCondition: cond });
+    setItem({ ...item, ebayCategoryId: cat, ebayCondition: cond });
+    setEbayNote('✓ eBay details saved');
+    setTimeout(() => setEbayNote(''), 3000);
+  };
+
   const confirmDelete = () => {
     Alert.alert(
       'Remove item?',
@@ -752,6 +772,45 @@ export default function ItemScreen() {
       </View>
 
       <View style={styles.card}>
+        <Text style={styles.cardTitle}>eBay listing</Text>
+        <Text style={styles.label}>Category ID</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="eBay category number, e.g. 21139"
+          value={ebayCategoryId}
+          onChangeText={setEbayCategoryId}
+          keyboardType="number-pad"
+          returnKeyType="done"
+        />
+        <Text style={styles.label}>Condition</Text>
+        <View style={styles.statusRow}>
+          {EBAY_CONDITIONS.map((c) => (
+            <Pressable
+              key={c}
+              style={[styles.statusChip, ebayCondition === c && styles.statusChipActive]}
+              onPress={() => setEbayCondition(c)}
+              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+            >
+              <Text
+                style={[styles.statusChipText, ebayCondition === c && styles.statusChipTextActive]}
+              >
+                {c}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Pressable style={styles.btn} onPress={saveEbay}>
+          <Text style={styles.btnText}>Save eBay details</Text>
+        </Pressable>
+        {ebayNote !== '' && <Text style={[styles.note, styles.pass]}>{ebayNote}</Text>}
+        {ebayCategoryId.trim() === '' && (
+          <Text style={styles.note}>
+            Set a Category ID before sending this item to eBay drafts — eBay requires one.
+          </Text>
+        )}
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.cardTitle}>Status — {item.status}</Text>
         <View style={styles.statusRow}>
           {ALL_STATUSES.map((s) => (
@@ -994,6 +1053,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: spacing.sm },
+  label: { color: colors.muted, fontSize: 14, fontWeight: '600', marginBottom: 4, marginTop: spacing.sm },
   container: { backgroundColor: colors.background, flex: 1 },
   hero: { alignItems: 'center', marginBottom: spacing.md },
   heroLabel: { color: colors.muted, fontSize: 13, fontWeight: '600' },

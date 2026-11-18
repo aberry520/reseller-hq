@@ -71,3 +71,39 @@ export function facebookDraftText(item: Item, fbPrice: number): string {
     listingDescription(item),
   ].join('\n');
 }
+
+// ---------------------------------------------------------------------------
+// eBay bulk draft rows — one row per item for the ebay-draft tab, which is
+// eBay's own bulk draft template (eBay-draft-listings-template_US). Header
+// is row 5, data from row 6; rows 1-4 are #INFO comments. Column order
+// must match the template exactly:
+//   Action | Custom label (SKU) | Category ID | Title | UPC | Price |
+//   Quantity | Item photo URL | Condition ID | Description | Format
+// Photo URL stays blank — the app's photos are local files, not public
+// URLs, so photos are added in eBay's draft editor after upload.
+// ---------------------------------------------------------------------------
+
+/** One ebay-draft row for an item. Price is the app's suggested eBay price. */
+export function ebayDraftRow(item: Item): string[] {
+  return [
+    'Draft',
+    item.id,
+    item.ebayCategoryId || '',
+    ebayTitle(item),
+    '',
+    item.suggestedPrice > 0 ? item.suggestedPrice.toFixed(2) : '',
+    '1',
+    '',
+    item.ebayCondition || 'Used - Good',
+    listingDescription(item, { condition: item.ebayCondition || 'Used - Good' }),
+    'FixedPrice',
+  ];
+}
+
+/** What is missing before an item can go into an eBay draft row. */
+export function ebayDraftMissing(item: Item): string[] {
+  const missing: string[] = [];
+  if (!item.ebayCategoryId.trim()) missing.push('Category ID');
+  if (!(item.suggestedPrice > 0)) missing.push('Price');
+  return missing;
+}

@@ -21,6 +21,7 @@ import { SEED_ITEMS } from './seed-data';
 import { FREE_SEED_ITEMS } from './free-seed-data';
 import { EXPENSES_SEED_ITEMS } from './expenses-seed-data';
 import {
+  DEFAULT_EBAY_CONDITION,
   DEFAULT_SETTINGS,
   Expense,
   FreeItem,
@@ -108,6 +109,8 @@ function seedToItem(s: (typeof SEED_ITEMS)[number], now: string): Item {
     photos: [],
     whiteBgPhotos: [],
     createdAt: now,
+    ebayCategoryId: '',
+    ebayCondition: DEFAULT_EBAY_CONDITION,
   };
 }
 
@@ -136,6 +139,15 @@ function webLoad(): void {
   for (const it of webItems as Item[]) {
     if (it.qrCode !== qrFor(it.id)) {
       it.qrCode = qrFor(it.id);
+      qrFixed = true;
+    }
+    // eBay draft fields predate this version — default them on old items.
+    if (it.ebayCategoryId === undefined) {
+      it.ebayCategoryId = '';
+      qrFixed = true;
+    }
+    if (it.ebayCondition === undefined) {
+      it.ebayCondition = DEFAULT_EBAY_CONDITION;
       qrFixed = true;
     }
   }
@@ -231,7 +243,9 @@ export function initDb(): void {
       qrCode TEXT NOT NULL DEFAULT '',
       photos TEXT NOT NULL DEFAULT '[]',
       whiteBgPhotos TEXT NOT NULL DEFAULT '[]',
-      createdAt TEXT NOT NULL DEFAULT ''
+      createdAt TEXT NOT NULL DEFAULT '',
+      ebayCategoryId TEXT NOT NULL DEFAULT '',
+      ebayCondition TEXT NOT NULL DEFAULT 'Used - Good'
     );
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
@@ -273,6 +287,18 @@ export function initDb(): void {
   // no longer matches its item's ID (the RHQ migration left RB-xxx QR
   // codes on RHQ-xxx items, so those labels scanned to nothing).
   d.runSync(`UPDATE items SET qrCode = 'reseller://item/' || id WHERE qrCode != 'reseller://item/' || id`);
+  // Migration for installs created before the eBay draft fields existed:
+  // add the columns (fails harmlessly if they are already there).
+  try {
+    d.execSync(`ALTER TABLE items ADD COLUMN ebayCategoryId TEXT NOT NULL DEFAULT '';`);
+  } catch {
+    // Column already exists.
+  }
+  try {
+    d.execSync(`ALTER TABLE items ADD COLUMN ebayCondition TEXT NOT NULL DEFAULT 'Used - Good';`);
+  } catch {
+    // Column already exists.
+  }
   const count = d.getFirstSync<{ c: number }>('SELECT COUNT(*) AS c FROM items');
   // Seeding happens once (first run). The '__seeded' marker distinguishes a
   // deliberate clear (empty on purpose — do NOT re-seed) from a first run.
@@ -287,8 +313,8 @@ export function initDb(): void {
         `INSERT INTO items (id, name, purchase, estShip, suggestedPrice, minPrice,
           researchPrice, notes, place, datePurchased, status, dateListed, dateSold,
           soldPrice, fees, shipping, profit, revenue, profitMargin, macBidFees,
-          location, qrCode, photos, whiteBgPhotos, createdAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          location, qrCode, photos, whiteBgPhotos, createdAt, ebayCategoryId, ebayCondition)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           s.id,
           s.name,
@@ -315,6 +341,8 @@ export function initDb(): void {
           '[]',
           '[]',
           now,
+          '',
+          DEFAULT_EBAY_CONDITION,
         ],
       );
     }
@@ -379,6 +407,9 @@ function rowToItem(row: ItemRow): Item {
     qrCode: qrFor(row.id),
     photos: safeParse(row.photos),
     whiteBgPhotos: safeParse(row.whiteBgPhotos),
+    // eBay draft fields predate this column on old installs — default them.
+    ebayCategoryId: row.ebayCategoryId ?? '',
+    ebayCondition: row.ebayCondition ?? DEFAULT_EBAY_CONDITION,
   };
 }
 
@@ -442,7 +473,8 @@ export function updateItem(id: string, patch: Partial<Item>): void {
     `UPDATE items SET name=?, purchase=?, estShip=?, suggestedPrice=?, minPrice=?,
       researchPrice=?, notes=?, place=?, datePurchased=?, status=?, dateListed=?,
       dateSold=?, soldPrice=?, fees=?, shipping=?, profit=?, revenue=?,
-      profitMargin=?, macBidFees=?, location=?, qrCode=?, photos=?, whiteBgPhotos=?
+      profitMargin=?, macBidFees=?, location=?, qrCode=?, photos=?, whiteBgPhotos=?,
+      ebayCategoryId=?, ebayCondition=?
      WHERE id=?`,
     [
       next.name,
@@ -468,6 +500,8 @@ export function updateItem(id: string, patch: Partial<Item>): void {
       next.qrCode,
       JSON.stringify(next.photos),
       JSON.stringify(next.whiteBgPhotos),
+      next.ebayCategoryId ?? '',
+      next.ebayCondition ?? DEFAULT_EBAY_CONDITION,
       id,
     ],
   );
@@ -681,6 +715,8 @@ export function addItem(input: {
     photos: [],
     whiteBgPhotos: [],
     createdAt: new Date().toISOString(),
+    ebayCategoryId: '',
+    ebayCondition: DEFAULT_EBAY_CONDITION,
   };
   if (IS_WEB) {
     webLoad();
@@ -692,8 +728,8 @@ export function addItem(input: {
     `INSERT INTO items (id, name, purchase, estShip, suggestedPrice, minPrice,
       researchPrice, notes, place, datePurchased, status, dateListed, dateSold,
       soldPrice, fees, shipping, profit, revenue, profitMargin, macBidFees,
-      location, qrCode, photos, whiteBgPhotos, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      location, qrCode, photos, whiteBgPhotos, createdAt, ebayCategoryId, ebayCondition)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       item.id,
       item.name,
@@ -720,6 +756,8 @@ export function addItem(input: {
       '[]',
       '[]',
       item.createdAt,
+      item.ebayCategoryId,
+      item.ebayCondition,
     ],
   );
   return item;

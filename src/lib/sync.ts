@@ -28,6 +28,7 @@ import {
   SheetRow,
   SyncPlan,
 } from './sync-diff';
+import { ebayDraftRow } from './listing';
 import { Expense, Item, normaliseStatus } from './types';
 
 export type { SheetRow, SyncPlan } from './sync-diff';
@@ -293,6 +294,28 @@ export async function pushExpenseRows(expenses: Expense[]): Promise<OverwriteRes
     })),
   });
   return { count: data.written ?? expenses.length, errors: data.errors ?? [] };
+}
+
+// Send eBay bulk draft rows to the ebay-draft tab (eBay's own template).
+// The Apps Script appends them after the last data row and skips any row
+// whose SKU (Custom label) is already in the tab, so sending the same
+// item twice does not duplicate the draft. Returns how many were written
+// and which SKUs were skipped as already there.
+export async function pushEbayDrafts(items: Item[]): Promise<{
+  written: number;
+  skipped: string[];
+  errors: string[];
+}> {
+  const data = await postSync({
+    action: 'ebayDrafts',
+    rows: items.map((it) => ebayDraftRow(it)),
+  });
+  const extra = data as { skipped?: string[] };
+  return {
+    written: data.written ?? items.length,
+    skipped: extra.skipped ?? [],
+    errors: data.errors ?? [],
+  };
 }
 
 // Push one or more items to the sheet as upserts (merge). Used when an

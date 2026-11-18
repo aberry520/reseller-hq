@@ -26,6 +26,11 @@
 //        clear     {} — delete all data rows, keep the header.
 //        overwriteExpenses { rows } — replace the Expenses tab with the
 //                  given rows (the Expenses page's "Send to sheet").
+//        ebayDrafts { rows: [[...11 columns...]] } — append eBay bulk
+//                  draft rows to the ebay-draft tab (eBay's own template:
+//                  #INFO rows, header row, data below). Rows whose SKU
+//                  (Custom label) already exists are skipped, so sending
+//                  the same item twice does not duplicate the draft.
 //
 // Columns are found by HEADER TEXT, not by letter, and the header row is
 // found by scanning the first few rows — so a sheet works as long as it has
@@ -429,6 +434,64 @@ function doPost(e) {
         }
       }
       return json_({ ok: true, written: expWritten, errors: expErrors });
+    }
+
+    // eBay bulk draft rows go to the ebay-draft tab (eBay's own template:
+    // #INFO rows, header row, data below). The header row is found by
+    // scanning for the "Custom label (SKU)" header, so it works whatever
+    // row the template puts it on. Rows are appended after the last data
+    // row; a row whose SKU already exists in the tab is skipped, so
+    // sending the same item twice does not duplicate the draft.
+    if (action === 'ebayDrafts') {
+      var draftSheet = openTab_('ebay-draft');
+      var draftLastCol = draftSheet.getLastColumn();
+      var draftHeaderRow = 0;
+      var draftSkuCol = 0;
+      for (var hr = 1; hr <= 8; hr++) {
+        var hVals = draftSheet.getRange(hr, 1, 1, draftLastCol).getValues()[0];
+        for (var hc = 0; hc < hVals.length; hc++) {
+          if (str_(hVals[hc]).trim() === 'Custom label (SKU)') {
+            draftHeaderRow = hr;
+            draftSkuCol = hc + 1;
+            break;
+          }
+        }
+        if (draftHeaderRow) break;
+      }
+      if (!draftHeaderRow) {
+        return json_({ error: 'ebay-draft tab has no "Custom label (SKU)" header row (looked in rows 1-8).' });
+      }
+      var draftRows = body.rows || [];
+      var draftLastRow = draftSheet.getLastRow();
+      var existingSkus = {};
+      if (draftLastRow > draftHeaderRow) {
+        var skuVals = draftSheet.getRange(draftHeaderRow + 1, draftSkuCol, draftLastRow - draftHeaderRow, 1).getValues();
+        for (var s = 0; s < skuVals.length; s++) {
+          var sku = str_(skuVals[s][0]).trim();
+          if (sku) existingSkus[sku] = true;
+        }
+      }
+      var draftWritten = 0;
+      var draftSkipped = [];
+      var draftErrors = [];
+      var nextDraftRow = draftLastRow + 1;
+      for (var d = 0; d < draftRows.length; d++) {
+        try {
+          var dRow = draftRows[d];
+          var dSku = str_(dRow[1]).trim();
+          if (dSku && existingSkus[dSku]) {
+            draftSkipped.push(dSku);
+            continue;
+          }
+          draftSheet.getRange(nextDraftRow, 1, 1, dRow.length).setValues([dRow]);
+          if (dSku) existingSkus[dSku] = true;
+          nextDraftRow++;
+          draftWritten++;
+        } catch (ex) {
+          draftErrors.push('row ' + (d + 1) + ': ' + String(ex));
+        }
+      }
+      return json_({ ok: true, written: draftWritten, skipped: draftSkipped, errors: draftErrors });
     }
 
     var tab = body.tab || SHEET_NAME;

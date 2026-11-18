@@ -8,8 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 
 type Tool = {
-  href: '/calculator' | '/scan' | '/labels' | '/sync' | '/expenses';
-  icon: 'calculator-outline' | 'scan-outline' | 'pricetag-outline' | 'sync-outline' | 'receipt-outline';
+  href: '/calculator' | '/scan' | '/labels' | '/sync' | '/expenses' | '/ebay-drafts';
+  icon: 'calculator-outline' | 'scan-outline' | 'pricetag-outline' | 'sync-outline' | 'receipt-outline' | 'bag-outline';
   title: string;
   desc: string;
 };
@@ -44,6 +44,12 @@ const TOOLS: Tool[] = [
     icon: 'receipt-outline',
     title: 'Expenses',
     desc: 'Tape, MacBid fees, payouts — and sync them with the sheet\u2019s Expenses tab.',
+  },
+  {
+    href: '/ebay-drafts',
+    icon: 'bag-outline',
+    title: 'eBay drafts',
+    desc: 'Send items to the ebay-draft tab for eBay bulk upload. Category and condition are set per item.',
   },
 ];
 
