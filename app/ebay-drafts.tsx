@@ -19,7 +19,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,6 +30,9 @@ import { formatMoney } from '../src/lib/pricing';
 import { DEFAULT_EBAY_CONDITION, EBAY_CONDITIONS } from '../src/lib/types';
 import type { Item } from '../src/lib/types';
 import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
+import CategoryPicker from '../src/components/CategoryPicker';
+import type { EbayCategory } from '../src/lib/ebay-categories';
+import { ebayCategoryById } from '../src/lib/ebay-categories';
 
 export default function EbayDraftsScreen() {
   const insets = useSafeAreaInsets();
@@ -38,6 +41,8 @@ export default function EbayDraftsScreen() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState('');
+  // Which item's category picker is open (item id), or null.
+  const [catPickerFor, setCatPickerFor] = useState<string | null>(null);
 
   const reload = useCallback(() => {
     // Deleted and Sold items are never drafted; everything else is listed.
@@ -71,15 +76,6 @@ export default function EbayDraftsScreen() {
       ),
     );
   const clearSelection = () => setSelected(new Set());
-
-  const setCategory = (id: string, value: string) => {
-    const cat = value.replace(/[^0-9]/g, '');
-    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ebayCategoryId: cat } : it)));
-  };
-
-  const saveCategory = (id: string, value: string) => {
-    updateItem(id, { ebayCategoryId: value.replace(/[^0-9]/g, '').trim() });
-  };
 
   const cycleCondition = (id: string) => {
     const it = items.find((x) => x.id === id);
@@ -189,16 +185,16 @@ export default function EbayDraftsScreen() {
                 </View>
               </Pressable>
               <View style={styles.editCol}>
-                <TextInput
-                  style={styles.catInput}
-                  placeholder="Category ID"
-                  placeholderTextColor={colors.muted}
-                  value={item.ebayCategoryId ?? ''}
-                  onChangeText={(v) => setCategory(item.id, v)}
-                  onEndEditing={(e) => saveCategory(item.id, e.nativeEvent.text)}
-                  keyboardType="number-pad"
-                  returnKeyType="done"
-                />
+                <Pressable
+                  style={styles.catPick}
+                  onPress={() => setCatPickerFor(item.id)}
+                  hitSlop={{ top: 4, bottom: 4 }}
+                >
+                  <Text style={styles.catPickText} numberOfLines={1}>
+                    {ebayCategoryById(item.ebayCategoryId ?? '')?.name ??
+                      (item.ebayCategoryId ? `ID ${item.ebayCategoryId}` : 'Category…')}
+                  </Text>
+                </Pressable>
                 <Pressable
                   style={styles.condBtn}
                   onPress={() => cycleCondition(item.id)}
@@ -232,6 +228,20 @@ export default function EbayDraftsScreen() {
         </Pressable>
         {result !== '' && <Text style={styles.result}>{result}</Text>}
       </View>
+      <CategoryPicker
+        visible={catPickerFor !== null}
+        initialQuery={
+          catPickerFor ? items.find((it) => it.id === catPickerFor)?.name ?? '' : ''
+        }
+        onSelect={(cat: EbayCategory) => {
+          if (!catPickerFor) return;
+          updateItem(catPickerFor, { ebayCategoryId: cat.id });
+          setItems((prev) =>
+            prev.map((x) => (x.id === catPickerFor ? { ...x, ebayCategoryId: cat.id } : x)),
+          );
+        }}
+        onClose={() => setCatPickerFor(null)}
+      />
     </View>
   );
 }
@@ -257,6 +267,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     width: 110,
   },
+  catPick: {
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    height: 40,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    width: 110,
+  },
+  catPickText: { color: colors.text, fontSize: 13, fontWeight: '600' },
   check: { color: colors.text, fontSize: 20, marginRight: spacing.sm },
   condBtn: {
     alignItems: 'center',

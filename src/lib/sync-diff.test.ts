@@ -13,6 +13,7 @@ import {
 } from './sync-diff';
 import { DEFAULT_SETTINGS, idFromQr, Item } from './types';
 import { ebayDraftMissing, ebayDraftRow } from './listing';
+import { ebayCategoryById, searchEbayCategories } from './ebay-categories';
 
 let failures = 0;
 
@@ -358,6 +359,21 @@ check(
   'ebayDraftMissing flags a missing Category ID',
   ebayDraftMissing(makeItem({ ebayCategoryId: '', suggestedPrice: 44.99 })).join(',') === 'Category ID' &&
     ebayDraftMissing(draftItem).length === 0,
+);
+
+// 16. Category search finds eBay leaf categories by keyword, with the
+// full breadcrumb, and only offers leaves (eBay rejects parent IDs).
+const mowerHits = searchEbayCategories('lawn mower');
+check(
+  'searchEbayCategories finds Lawn Mowers by keyword',
+  mowerHits.length > 0 &&
+    mowerHits.some((c) => c.id === '260921' && c.path.includes('Lawn Mowers')),
+);
+check(
+  'searchEbayCategories returns only leaves and ebayCategoryById resolves an ID',
+  mowerHits.every((c) => c.id !== '' && c.path !== '') &&
+    ebayCategoryById('260921')?.name === 'Lawn Mowers' &&
+    ebayCategoryById('999999999') === null,
 );
 
 if (failures > 0) throw new Error(`${failures} sync-diff check(s) failed`);

@@ -36,6 +36,9 @@ import DateField from '../../src/components/DateField';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 import { appliesMacBidFees, DEFAULT_EBAY_CONDITION, EBAY_CONDITIONS } from '../../src/lib/types';
 import type { Item } from '../../src/lib/types';
+import CategoryPicker from '../../src/components/CategoryPicker';
+import { ebayCategoryById } from '../../src/lib/ebay-categories';
+import type { EbayCategory } from '../../src/lib/ebay-categories';
 
 const ALL_STATUSES: Item['status'][] = [
   'Draft',
@@ -83,6 +86,8 @@ export default function ItemScreen() {
   const [ebayCategoryId, setEbayCategoryId] = useState('');
   const [ebayCondition, setEbayCondition] = useState(DEFAULT_EBAY_CONDITION);
   const [ebayNote, setEbayNote] = useState('');
+  const [catPickerVisible, setCatPickerVisible] = useState(false);
+  const ebayCategory = ebayCategoryById(ebayCategoryId.trim());
   // Full-screen photo viewer: index into item.photos, null = closed.
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const viewerListRef = useRef<FlatList<string> | null>(null);
@@ -773,14 +778,33 @@ export default function ItemScreen() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>eBay listing</Text>
-        <Text style={styles.label}>Category ID</Text>
+        <Text style={styles.label}>Category</Text>
+        <Pressable
+          style={styles.catPick}
+          onPress={() => setCatPickerVisible(true)}
+          hitSlop={{ top: 4, bottom: 4 }}
+        >
+          <Text style={styles.catPickText} numberOfLines={2}>
+            {ebayCategory ? ebayCategory.path : ebayCategoryId.trim() !== '' ? `ID ${ebayCategoryId.trim()} (not in the 2026 tree)` : 'Tap to search eBay categories'}
+          </Text>
+          <Text style={styles.catPickId}>
+            {ebayCategory ? `ID ${ebayCategory.id}` : ebayCategoryId.trim() !== '' ? 'Tap to search, or type an ID below' : 'Search by keyword, e.g. lawn mower'}
+          </Text>
+        </Pressable>
         <TextInput
           style={styles.input}
-          placeholder="eBay category number, e.g. 21139"
+          placeholder="Or type a category ID directly"
+          placeholderTextColor={colors.muted}
           value={ebayCategoryId}
-          onChangeText={setEbayCategoryId}
+          onChangeText={(v) => setEbayCategoryId(v.replace(/[^0-9]/g, ''))}
           keyboardType="number-pad"
           returnKeyType="done"
+        />
+        <CategoryPicker
+          visible={catPickerVisible}
+          initialQuery={cleanName(item.name)}
+          onSelect={(cat: EbayCategory) => setEbayCategoryId(cat.id)}
+          onClose={() => setCatPickerVisible(false)}
         />
         <Text style={styles.label}>Condition</Text>
         <View style={styles.statusRow}>
@@ -1054,6 +1078,18 @@ const styles = StyleSheet.create({
   },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: spacing.sm },
   label: { color: colors.muted, fontSize: 14, fontWeight: '600', marginBottom: 4, marginTop: spacing.sm },
+  catPick: {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    minHeight: minTouchHeight,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  catPickText: { color: colors.text, fontSize: 15, fontWeight: '600', lineHeight: 20 },
+  catPickId: { color: colors.muted, fontSize: 13, marginTop: 2 },
   container: { backgroundColor: colors.background, flex: 1 },
   hero: { alignItems: 'center', marginBottom: spacing.md },
   heroLabel: { color: colors.muted, fontSize: 13, fontWeight: '600' },
