@@ -11,7 +11,7 @@ import {
   planPreview,
   SheetRow,
 } from './sync-diff';
-import { DEFAULT_SETTINGS, Item } from './types';
+import { DEFAULT_SETTINGS, idFromQr, Item } from './types';
 
 let failures = 0;
 
@@ -311,6 +311,20 @@ check(
   bothDeletedDiff.changed.length === 0 &&
     bothDeletedDiff.sheetOnly.length === 0 &&
     bothDeletedDiff.appOnly.length === 0,
+);
+
+// 14. The scanner must recognise the new RHQ IDs, not just the old RB
+// scheme — a screenshot of an RHQ QR was rejected as "not a Reseller HQ
+// code" because idFromQr only matched RB-\d+.
+check(
+  'idFromQr accepts RHQ and RB QR payloads and bare IDs',
+  idFromQr('reseller://item/RHQ-000189') === 'RHQ-000189' &&
+    idFromQr('reseller://item/RB-001') === 'RB-001' &&
+    idFromQr('RHQ-000189') === 'RHQ-000189' &&
+    idFromQr('rb-001') === 'RB-001' &&
+    idFromQr('reseller://item/FR-012') === 'FR-012' &&
+    idFromQr('not a code') === null &&
+    idFromQr('reseller://item/') === null,
 );
 
 if (failures > 0) throw new Error(`${failures} sync-diff check(s) failed`);

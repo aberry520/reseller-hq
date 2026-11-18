@@ -158,9 +158,12 @@ export function normaliseFreeStatus(raw: string): FreeStatus {
 }
 
 export function idFromQr(data: string): string | null {
-  const m = data.trim().match(/reseller:\/\/item\/(RB-\d+)/i);
+  // Accept any PREFIX-digits ID (RB-xxx, RHQ-000xxx, FR-xxx, ...), not
+  // just the old RB scheme — the scanner rejected RHQ QR codes because
+  // this only matched RB-\d+.
+  const m = data.trim().match(/reseller:\/\/item\/([A-Za-z]+-\d+)/i);
   if (m) return m[1].toUpperCase();
   // Also accept a bare ID printed under the QR.
-  if (/^RB-\d+$/i.test(data.trim())) return data.trim().toUpperCase();
+  if (/^[A-Za-z]+-\d+$/i.test(data.trim())) return data.trim().toUpperCase();
   return null;
 }
