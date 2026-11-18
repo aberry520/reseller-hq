@@ -56,6 +56,19 @@ const parseMoney = (s: string): number => {
 
 const moneyStr = (n: number): string => (n > 0 ? String(n) : '');
 
+// White-bg versions line up with photos by index ('' = no version yet for
+// that photo). Return an array the same length as photos, keeping the
+// existing entries (they belong to the first photos, in order) and padding
+// the rest with ''. Used whenever photos change so the batch removal can
+// tell which photos already have a white-bg version and skip them.
+const alignWhiteBg = (photos: string[], whiteBgPhotos: string[]): string[] => {
+  const out = new Array<string>(photos.length).fill('');
+  for (let i = 0; i < Math.min(photos.length, whiteBgPhotos.length); i++) {
+    out[i] = whiteBgPhotos[i];
+  }
+  return out;
+};
+
 export default function ItemScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -180,7 +193,15 @@ export default function ItemScreen() {
     } catch {
       // fall through with the original photo
     }
-    const next = { ...item, photos: [...item.photos, uri] };
+    const next = {
+      ...item,
+      photos: [...item.photos, uri],
+      // Keep the white-bg array the same length as the photos, aligned by
+      // index ('' = no white-bg version yet for that photo). Otherwise the
+      // next batch removal can't tell which photos already have one and
+      // re-processes everything.
+      whiteBgPhotos: alignWhiteBg([...item.photos, uri], item.whiteBgPhotos),
+    };
     updateItem(item.id, next);
     setItem(next);
   };
@@ -200,13 +221,10 @@ export default function ItemScreen() {
       setBgNote('No photos yet.');
       return;
     }
-    // White-bg versions only line up with photos by index when the two
-    // arrays are the same length. Otherwise a photo whose removal failed
-    // earlier has no entry, so rebuild aligned by index ('' = not done).
-    const aligned =
-      item.photos.length === item.whiteBgPhotos.length
-        ? [...item.whiteBgPhotos]
-        : new Array<string>(item.photos.length).fill('');
+    // White-bg versions line up with photos by index. Keep the existing
+    // entries (they belong to the first photos, in order) and pad the rest
+    // with '' (not done yet) so the arrays stay the same length.
+    const aligned = alignWhiteBg(item.photos, item.whiteBgPhotos);
     const pending = item.photos
       .map((uri, i) => ({ uri, i }))
       .filter(({ i }) => !aligned[i]);
@@ -270,13 +288,11 @@ export default function ItemScreen() {
   // Swap a photo with its white-background version: the white-bg becomes
   // the photo shown (and the cover, if it was first), and the original
   // moves into the white-bg slot, so swapping back is one more tap.
-  // Only runs when the two arrays line up by index.
   const swapPhotoBg = (index: number) => {
-    if (item.photos.length !== item.whiteBgPhotos.length) return;
-    const bgUri = item.whiteBgPhotos[index];
+    const whiteBgPhotos = alignWhiteBg(item.photos, item.whiteBgPhotos);
+    const bgUri = whiteBgPhotos[index];
     if (!bgUri) return;
     const photos = [...item.photos];
-    const whiteBgPhotos = [...item.whiteBgPhotos];
     [photos[index], whiteBgPhotos[index]] = [whiteBgPhotos[index], photos[index]];
     const next = { ...item, photos, whiteBgPhotos };
     updateItem(item.id, next);
@@ -290,8 +306,7 @@ export default function ItemScreen() {
   // between the two versions.
   const viewerWhiteBg = async (index: number) => {
     if (busy) return;
-    const aligned = item.photos.length === item.whiteBgPhotos.length;
-    if (aligned && item.whiteBgPhotos[index]) {
+    if (alignWhiteBg(item.photos, item.whiteBgPhotos)[index]) {
       swapPhotoBg(index);
       return;
     }
@@ -308,10 +323,7 @@ export default function ItemScreen() {
       );
       return;
     }
-    const whiteBgPhotos =
-      item.photos.length === item.whiteBgPhotos.length
-        ? [...item.whiteBgPhotos]
-        : new Array<string>(item.photos.length).fill('');
+    const whiteBgPhotos = alignWhiteBg(item.photos, item.whiteBgPhotos);
     whiteBgPhotos[index] = bg.uri;
     const withBg = { ...item, whiteBgPhotos };
     updateItem(item.id, withBg);
@@ -705,7 +717,7 @@ export default function ItemScreen() {
                   <Text style={styles.coverBadgeText}>Cover</Text>
                 </View>
               )}
-              {item.photos.length === item.whiteBgPhotos.length && item.whiteBgPhotos[i] && (
+              {alignWhiteBg(item.photos, item.whiteBgPhotos)[i] && (
                 <View style={styles.wbBadge}>
                   <Text style={styles.wbBadgeText}>WB</Text>
                 </View>
@@ -881,7 +893,7 @@ export default function ItemScreen() {
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
               <Text style={styles.viewerActionText}>
-                {item.photos.length === item.whiteBgPhotos.length && item.whiteBgPhotos[viewerIndex]
+                {alignWhiteBg(item.photos, item.whiteBgPhotos)[viewerIndex]
                   ? 'Swap white-bg'
                   : 'White-bg'}
               </Text>
