@@ -177,21 +177,61 @@ export default function ItemScreen() {
     const next = { ...item, photos: [...item.photos, uri] };
     updateItem(item.id, next);
     setItem(next);
-    setBgNote('');
-    // Background removal is optional and server-based.
-    setBusy(true);
-    const bg = await removeBackground(uri, settings.bgRemoverUrl);
-    setBusy(false);
-    if (bg.ok) {
-      const withBg = { ...next, whiteBgPhotos: [...next.whiteBgPhotos, bg.uri] };
-      updateItem(item.id, withBg);
-      setItem(withBg);
-      setBgNote('White-background version saved.');
-    } else if (bg.reason === 'not-configured') {
-      setBgNote('BG remover not set — original photo kept. Set the URL in Settings to auto-whiten.');
-    } else {
-      setBgNote(`Background removal failed (${bg.reason}${bg.detail ? `: ${bg.detail}` : ''}) — original kept.`);
+  };
+
+  // Batch background removal: send every photo that does not yet have a
+  // white-background version to the server, one at a time, and save each
+  // result as it comes back so a partial run is kept. Photos are NOT
+  // whitened when taken any more — take all of them first, then press
+  // this button once. Skips photos that already have a white-bg version.
+  const removeAllBackgrounds = async () => {
+    if (busy) return;
+    if (!settings.bgRemoverUrl) {
+      setBgNote('BG remover not set — set the URL in Settings first.');
+      return;
     }
+    if (item.photos.length === 0) {
+      setBgNote('No photos yet.');
+      return;
+    }
+    // White-bg versions only line up with photos by index when the two
+    // arrays are the same length. Otherwise a photo whose removal failed
+    // earlier has no entry, so rebuild aligned by index ('' = not done).
+    const aligned =
+      item.photos.length === item.whiteBgPhotos.length
+        ? [...item.whiteBgPhotos]
+        : new Array<string>(item.photos.length).fill('');
+    const pending = item.photos
+      .map((uri, i) => ({ uri, i }))
+      .filter(({ i }) => !aligned[i]);
+    if (pending.length === 0) {
+      setBgNote('All photos already have a white-background version.');
+      setTimeout(() => setBgNote(''), 3000);
+      return;
+    }
+    setBusy(true);
+    let done = 0;
+    let failed = 0;
+    for (const [n, { uri, i }] of pending.entries()) {
+      setBgNote(`Removing background… ${n + 1} of ${pending.length}`);
+      const bg = await removeBackground(uri, settings.bgRemoverUrl);
+      if (bg.ok) {
+        aligned[i] = bg.uri;
+        done += 1;
+        const next = { ...item, whiteBgPhotos: [...aligned] };
+        updateItem(item.id, next);
+        setItem(next);
+      } else {
+        failed += 1;
+      }
+    }
+    setBusy(false);
+    setBgNote(
+      failed === 0
+        ? `Backgrounds removed for ${done} photo${done === 1 ? '' : 's'}.`
+        : `Removed ${done}, failed ${failed}. Check the server and try again.`,
+    );
+    setTimeout(() => setBgNote(''), 4000);
   };
 
   const removePhoto = (uri: string) => {
@@ -591,7 +631,7 @@ export default function ItemScreen() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Photos ({item.photos.length})</Text>
-        <Text style={styles.note}>Photos are cropped square (1:1) for eBay — adjust the crop when you take one.</Text>
+        <Text style={styles.note}>Photos are cropped square (1:1) for eBay — adjust the crop when you take one. Take all your photos first, then remove backgrounds for all of them at once.</Text>
         {item.photos.length === 0 && <Text style={styles.line}>No photos yet.</Text>}
         {item.photos.map((uri, i) => (
           <View key={uri} style={styles.photoWrap}>
@@ -650,7 +690,7 @@ export default function ItemScreen() {
           <Text style={styles.line}>White-bg versions: {item.whiteBgPhotos.length}</Text>
         )}
         {bgNote !== '' && <Text style={styles.note}>{bgNote}</Text>}
-        {busy && <Text style={styles.note}>Removing background…</Text>}
+        {busy && bgNote === '' && <Text style={styles.note}>Removing background…</Text>}
         <View style={styles.btnRow}>
           <Pressable style={styles.btn} onPress={() => void takePhoto(true)} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
             <Text style={styles.btnText}>Take photo</Text>
@@ -659,6 +699,18 @@ export default function ItemScreen() {
             <Text style={styles.btnText}>Add from library</Text>
           </Pressable>
         </View>
+        {item.photos.length > 0 && (
+          <Pressable
+            style={[styles.btn, styles.bigBtn, busy && styles.btnDisabled]}
+            disabled={busy}
+            onPress={() => void removeAllBackgrounds()}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+          >
+            <Text style={styles.btnText}>
+              {busy ? 'Removing backgrounds…' : 'Remove backgrounds for all photos'}
+            </Text>
+          </Pressable>
+        )}
       </View>
 
       <View style={styles.card}>
@@ -877,6 +929,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
+  btnDisabled: { opacity: 0.5 },
   btnRow: { flexDirection: 'row', flexWrap: 'wrap' },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   deleteBtn: { backgroundColor: colors.danger, marginTop: spacing.lg },
