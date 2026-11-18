@@ -1,7 +1,10 @@
 // Reseller HQ — web label printer (no framework, no build step).
-// Inventory comes from items.json (generated from ../seed-purchase.csv).
-// QR payload is exactly `reseller://item/RB-xxx`, same as the phone app
+// Inventory comes from items.json (generated from ../src/lib/seed-data.ts).
+// QR payload is exactly `reseller://item/<id>`, same as the phone app
 // (src/lib/types.ts qrFor). ZPL matches src/lib/zpl.ts zplForItems.
+// The QR is derived from the item's ID at render time, never from a
+// stored qr field, so it can't go stale when an ID changes (the RB →
+// RHQ rename left the old items.json with RB-xxx IDs and QR codes).
 
 (function () {
   'use strict';
@@ -103,6 +106,11 @@
   }
 
   // ---- ZPL: byte-for-byte the same layout as src/lib/zpl.ts ----
+  // The QR payload is derived from the ID (same as qrFor in the phone
+  // app), so a renamed ID can never leave a stale QR behind.
+  function qrFor(item) {
+    return 'reseller://item/' + item.id;
+  }
   function zplEscape(s) {
     return String(s).replace(/[\^~]/g, '').trim();
   }
@@ -114,7 +122,7 @@
       '^PW406',
       '^LL203',
       '^FO10,10^BQN,2,4',
-      '^FDQA,' + zplEscape(item.qr) + '^FS',
+      '^FDQA,' + zplEscape(qrFor(item)) + '^FS',
       '^FO130,20^A0N,26,26^FD' + nameLines[0] + '^FS',
     ];
     if (nameLines[1]) lines.push('^FO130,52^A0N,26,26^FD' + nameLines[1] + '^FS');
@@ -133,7 +141,7 @@
   function labelHtml(item) {
     var name = shortName(item.name);
     return '<div class="label">' +
-      '<div class="qr">' + qrSvg(item.qr) + '</div>' +
+      '<div class="qr">' + qrSvg(qrFor(item)) + '</div>' +
       '<div class="label-text">' +
         '<div class="label-name">' + esc(name) + '</div>' +
         '<div class="label-id">' + esc(item.id) + '</div>' +

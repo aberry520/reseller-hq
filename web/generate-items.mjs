@@ -1,8 +1,10 @@
-// Generate web/items.json from ../seed-purchase.csv (the source of truth).
+// Generate web/items.json from ../src/lib/seed-data.ts (the source of
+// truth — the same 253 RHQ-xxx items the phone app seeds from).
 // Usage: node generate-items.mjs
-// Re-run whenever the sheet / seed CSV changes, then restart the server.
-// Expected counts: 192 items, 61 Sold, 57 Listed, 30 Draft, 29 blank,
-// 11 Trash, 2 Return, 2 Trash Return. To List = Draft + blank = 59.
+// Re-run whenever the sheet / seed data changes, then restart the server.
+// The QR is derived from the ID (reseller://item/<id>), never stored
+// separately, so it can't go stale when an ID changes — the RB → RHQ
+// rename left the old items.json with RB-xxx IDs and RB-xxx QR codes.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -10,54 +12,34 @@ import { dirname, join } from 'node:path';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 
-// Minimal CSV parser that handles quoted fields with embedded newlines/commas.
-// Same approach as ../scripts/generate-seed.mjs.
-function parseCsv(text) {
-  const rows = [];
-  let row = [];
-  let field = '';
-  let inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++; }
-        else inQuotes = false;
-      } else field += c;
-    } else if (c === '"') inQuotes = true;
-    else if (c === ',') { row.push(field); field = ''; }
-    else if (c === '\n') { row.push(field); field = ''; rows.push(row); row = []; }
-    else if (c !== '\r') field += c;
-  }
-  if (field !== '' || row.length) { row.push(field); rows.push(row); }
-  return rows;
+// seed-data.ts is TypeScript, but the SEED_ITEMS array itself is plain
+// JSON (quoted keys, no TS syntax inside). Extract and parse it. The
+// first '[' in the file is the SeedItem[] type annotation, so find the
+// '[' after the '=' that starts the array literal.
+const seedSrc = readFileSync(join(dir, '..', 'src', 'lib', 'seed-data.ts'), 'utf-8');
+const eq = seedSrc.indexOf('=', seedSrc.indexOf('SEED_ITEMS'));
+const start = seedSrc.indexOf('[', eq);
+const end = seedSrc.lastIndexOf('];');
+if (start < 0 || end < 0 || eq < 0) {
+  console.error('could not find SEED_ITEMS array in src/lib/seed-data.ts');
+  process.exit(1);
 }
+const seedItems = JSON.parse(
+  // TypeScript allows a trailing comma after the last element; JSON
+  // does not, so strip it before parsing.
+  seedSrc.slice(start, end + 1).replace(/,\s*]$/, ']'),
+);
 
-function money(s) {
-  const v = parseFloat(String(s ?? '').replace(/[$,%]/g, '').trim());
-  return Number.isFinite(v) ? v : 0;
-}
-
-const text = readFileSync(join(dir, '..', 'seed-purchase.csv'), 'utf-8');
-const rows = parseCsv(text);
-const header = rows[0];
-const idx = (name) => header.indexOf(name);
-
-const items = rows
-  .slice(1)
-  .filter((r) => r.some((c) => String(c).trim() !== ''))
-  .map((r, i) => {
-    const id = `RB-${String(i + 1).padStart(3, '0')}`;
-    return {
-      id,
-      name: (r[idx('Item')] ?? '').trim(),
-      status: (r[idx('Status')] ?? '').trim(),
-      purchase: money(r[idx('Purchase')]),
-      place: (r[idx('Place of Purchase')] ?? '').trim(),
-      // Same QR payload as the phone app: src/lib/types.ts qrFor(id).
-      qr: `reseller://item/${id}`,
-    };
-  });
+const items = seedItems.map((s) => ({
+  id: s.id,
+  name: s.name,
+  status: s.status,
+  purchase: s.purchase,
+  place: s.place,
+  // Same QR payload as the phone app: src/lib/types.ts qrFor(id).
+  // Derived from the ID so it always matches.
+  qr: `reseller://item/${s.id}`,
+}));
 
 const counts = {};
 for (const it of items) counts[it.status || '(blank)'] = (counts[it.status || '(blank)'] ?? 0) + 1;
