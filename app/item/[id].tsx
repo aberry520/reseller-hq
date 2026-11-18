@@ -18,7 +18,6 @@ import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { ImageEditor } from 'expo-image-editor';
 import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
 import { pushItemsToSheetLive } from '../../src/lib/sync';
 import { cleanName } from '../../src/lib/listing';
@@ -34,6 +33,7 @@ import {
 } from '../../src/lib/pricing';
 import { removeBackground } from '../../src/services/bg-remover';
 import DateField from '../../src/components/DateField';
+import CropEditor from '../../src/components/CropEditor';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 import { appliesMacBidFees } from '../../src/lib/types';
 import type { Item } from '../../src/lib/types';
@@ -81,7 +81,7 @@ export default function ItemScreen() {
   const [costsNote, setCostsNote] = useState('');
   // Full-screen photo viewer: index into item.photos, null = closed.
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
-  // Crop editor (expo-image-editor modal) for the photo in the viewer.
+  // Crop editor (CropEditor modal) for the photo in the viewer.
   const [editorVisible, setEditorVisible] = useState(false);
   const viewerListRef = useRef<FlatList<string> | null>(null);
   // Editable money fields, mirroring the spreadsheet columns.
@@ -351,14 +351,14 @@ export default function ItemScreen() {
     viewerListRef.current?.scrollToIndex({ index: 0, animated: false });
   };
 
-  // Crop editor result: the editor returns the edited image ({ uri, ... }).
-  // Replace the photo with the cropped version; its white-bg version was
-  // made from the old crop, so clear it so it can be re-made.
-  const onCropDone = (result: { uri?: string }) => {
+  // Crop editor result: the edited image's URI. Replace the photo with
+  // the cropped version; its white-bg version was made from the old crop,
+  // so clear it so it can be re-made.
+  const onCropDone = (uri: string) => {
     setEditorVisible(false);
-    if (viewerIndex === null || !result?.uri) return;
+    if (viewerIndex === null || !uri) return;
     const photos = [...item.photos];
-    photos[viewerIndex] = result.uri;
+    photos[viewerIndex] = uri;
     let whiteBgPhotos = item.whiteBgPhotos;
     if (item.photos.length === item.whiteBgPhotos.length) {
       whiteBgPhotos = [...item.whiteBgPhotos];
@@ -919,15 +919,11 @@ export default function ItemScreen() {
     </Modal>
 
     {/* Crop editor for the photo in the viewer (square, for eBay). */}
-    <ImageEditor
+    <CropEditor
       visible={editorVisible}
       imageUri={viewerIndex !== null ? item.photos[viewerIndex] : undefined}
-      onCloseEditor={() => setEditorVisible(false)}
-      onEditingComplete={onCropDone}
-      mode="crop-only"
-      fixedCropAspectRatio={1}
-      lockAspectRatio
-      allowedTransformOperations={['crop', 'rotate']}
+      onClose={() => setEditorVisible(false)}
+      onDone={onCropDone}
     />
 
     <Modal
