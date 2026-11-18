@@ -143,7 +143,12 @@ export async function applySync(plan: SyncPlan): Promise<SyncResult> {
   const assignIds: Array<{ row: number; appId: string }> = [];
   for (const sheet of plan.importSheetRows) {
     try {
+      // Reuse the sheet's App ID when it has one (a row the app doesn't
+      // know yet, e.g. after a clear) — generating a new ID here would
+      // orphan the row's identity and leave its QR pointing at the old
+      // ID. Only rows with no App ID get a fresh one, stamped back below.
       const created = addItem({
+        id: sheet.appId || undefined,
         name: sheet.item,
         purchase: sheet.purchase,
         estShip: sheet.estShip,
@@ -152,7 +157,7 @@ export async function applySync(plan: SyncPlan): Promise<SyncResult> {
         notes: sheet.notes,
       });
       updateItem(created.id, sheetRowToPatch(sheet, created, settings));
-      assignIds.push({ row: sheet.row, appId: created.id });
+      if (!sheet.appId) assignIds.push({ row: sheet.row, appId: created.id });
       result.addedToApp++;
     } catch (e) {
       result.errors.push(`import "${sheet.item}": ${String(e)}`);

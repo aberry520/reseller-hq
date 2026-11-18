@@ -11,6 +11,7 @@ import { getAllItems } from '../src/lib/db';
 import { labelsHtml, labelsPrintFragment, shortName, zplForItems } from '../src/lib/zpl';
 import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
 import type { Item } from '../src/lib/types';
+import { qrFor } from '../src/lib/types';
 
 /**
  * Label queue: pick the items that need a label (defaults to everything
@@ -208,7 +209,7 @@ export default function LabelsScreen() {
                   {item.id} · {item.status}
                 </Text>
               </View>
-              <QRCode value={item.qrCode} size={44} />
+              <QRCode value={qrFor(item.id)} size={44} />
             </Pressable>
           );
         }}

@@ -11,6 +11,7 @@
 
 import { cleanName } from './listing';
 import type { Item } from './types';
+import { qrFor } from './types';
 
 export const LABEL_W_DOTS = 406; // 2" at 203 dpi
 export const LABEL_H_DOTS = 203; // 1" at 203 dpi
@@ -61,9 +62,10 @@ export function zplForItem(item: Item, qrMagnification = 4): string {
     '^XA',
     `^PW${LABEL_W_DOTS}`,
     `^LL${LABEL_H_DOTS}`,
-    // QR on the left.
+    // QR on the left. Derived from the ID, never from the stored qrCode
+    // (a stored code can go stale when an ID changes).
     `^FO10,10^BQN,2,${qrMagnification}`,
-    `^FDQA,${zplEscape(item.qrCode)}^FS`,
+    `^FDQA,${zplEscape(qrFor(item.id))}^FS`,
     // Short name, up to two lines, larger type so it stays readable.
     `^FO130,20^A0N,26,26^FD${nameLines[0]}^FS`,
     ...(nameLines[1] ? [`^FO130,52^A0N,26,26^FD${nameLines[1]}^FS`] : []),
@@ -92,7 +94,7 @@ export function zplForItems(items: Item[]): string {
 export function labelsPrintFragment(items: Item[]): string {
   const cards = items
     .map((it) => {
-      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(it.qrCode)}`;
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrFor(it.id))}`;
       return `<div class="label"><img src="${qrUrl}" /><div class="label-text"><div class="label-name">${escapeHtml(shortName(it.name))}</div><div class="label-id">${escapeHtml(it.id)}</div></div></div>`;
     })
     .join('\n');
@@ -116,7 +118,7 @@ export function labelsPrintFragment(items: Item[]): string {
 export function labelsHtml(items: Item[]): string {
   const cards = items
     .map((it) => {
-      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(it.qrCode)}`;
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrFor(it.id))}`;
       return `<div style="width:2in;height:1in;border:1px solid #000;display:inline-block;margin:4px;padding:4px;box-sizing:border-box;overflow:hidden;font-family:sans-serif;">
         <img src="${qrUrl}" style="width:0.8in;height:0.8in;float:left;margin-right:6px;" />
         <div style="font-size:12px;font-weight:bold;">${escapeHtml(shortName(it.name))}</div>

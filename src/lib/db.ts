@@ -128,6 +128,18 @@ function webLoad(): void {
     }
   }
   webItems = loaded ?? (seeded ? [] : SEED_ITEMS.map((s) => seedToItem(s, now)));
+  // Repair: the QR is derived from the ID, so recompute it for every
+  // loaded item — a stored qrCode can go stale when an ID changes (the
+  // RHQ migration left RB-xxx QR codes on RHQ-xxx items). Persist the
+  // repair so the stored JSON matches too.
+  let qrFixed = false;
+  for (const it of webItems as Item[]) {
+    if (it.qrCode !== qrFor(it.id)) {
+      it.qrCode = qrFor(it.id);
+      qrFixed = true;
+    }
+  }
+  if (qrFixed) webWrite(WEB_ITEMS_KEY, JSON.stringify(webItems));
   if (!loaded && !seeded) webWrite(WEB_ITEMS_KEY, JSON.stringify(webItems));
   // Free items + expenses: seeded from the sheet's Free/Expenses tabs; the
   // dashboard refreshes them from the sheet when sync is configured.
@@ -257,6 +269,10 @@ export function initDb(): void {
   } catch {
     // Column already exists.
   }
+  // Repair: the QR is derived from the ID, so fix any stored qrCode that
+  // no longer matches its item's ID (the RHQ migration left RB-xxx QR
+  // codes on RHQ-xxx items, so those labels scanned to nothing).
+  d.runSync(`UPDATE items SET qrCode = 'reseller://item/' || id WHERE qrCode != 'reseller://item/' || id`);
   const count = d.getFirstSync<{ c: number }>('SELECT COUNT(*) AS c FROM items');
   // Seeding happens once (first run). The '__seeded' marker distinguishes a
   // deliberate clear (empty on purpose — do NOT re-seed) from a first run.
@@ -357,6 +373,10 @@ function rowToItem(row: ItemRow): Item {
     ...row,
     status: row.status as ItemStatus,
     macBidFees: row.macBidFees === 1,
+    // The QR is derived from the ID, never trusted from storage: a stored
+    // qrCode can go stale when an item's ID changes (the RHQ migration
+    // left RB-xxx QR codes on RHQ-xxx items, so scans found nothing).
+    qrCode: qrFor(row.id),
     photos: safeParse(row.photos),
     whiteBgPhotos: safeParse(row.whiteBgPhotos),
   };
