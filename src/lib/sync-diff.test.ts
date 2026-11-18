@@ -199,6 +199,16 @@ check(
     appChecked.has('chg:RB-003') &&
     appChecked.has('del:RB-005'),
 );
+// The changed item's direction follows the source of truth: app wins
+// means the sheet's value becomes the app's (Sold → Listed), not the
+// other way round. (Regression: both sides used to show app → sheet.)
+check(
+  'app preview: changed item shows sheet → app',
+  appPreview
+    .find((g) => g.id === 'update-sheet')
+    ?.items.find((i) => i.key === 'chg:RB-003')
+    ?.sub === 'Status: Sold → Listed',
+);
 const appPlan = buildPlan(srcDiff, 'app', appChecked, srcRows);
 check(
   'app plan pushes app-only + changed, trashes the deleted item',
@@ -230,6 +240,14 @@ check(
     sheetChecked.has('sheet:5') &&
     sheetChecked.has('chg:RB-003') &&
     sheetChecked.has('del:RB-005'),
+);
+// Sheet wins means the app's value becomes the sheet's (Listed → Sold).
+check(
+  'sheet preview: changed item shows app → sheet',
+  sheetPreview
+    .find((g) => g.id === 'update-app')
+    ?.items.find((i) => i.key === 'chg:RB-003')
+    ?.sub === 'Status: Listed → Sold',
 );
 const sheetPlan = buildPlan(srcDiff, 'sheet', sheetChecked, srcRows);
 check(

@@ -369,7 +369,9 @@ export function planPreview(diff: SyncDiff, source: SyncSource): PreviewGroup[] 
         items: diff.changed.map((c) => ({
           key: keyForChanged(c.item.id),
           label: c.item.name,
-          sub: c.diffs.map((d) => `${d.field}: ${d.app} → ${d.sheet}`).join(' · '),
+          // Direction is what will happen: the sheet's current value
+          // becomes the app's value.
+          sub: c.diffs.map((d) => `${d.field}: ${d.sheet} → ${d.app}`).join(' · '),
         })),
       });
     }
@@ -415,6 +417,8 @@ export function planPreview(diff: SyncDiff, source: SyncSource): PreviewGroup[] 
         items: diff.changed.map((c) => ({
           key: keyForChanged(c.item.id),
           label: c.item.name,
+          // Direction is what will happen: the app's current value
+          // becomes the sheet's value.
           sub: c.diffs.map((d) => `${d.field}: ${d.app} → ${d.sheet}`).join(' · '),
         })),
       });
