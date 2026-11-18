@@ -238,6 +238,24 @@ export default function ItemScreen() {
     setItem(next);
   };
 
+  // Swap a photo with its white-background version: the white-bg becomes
+  // the photo shown (and the cover, if it was first), and the original
+  // moves into the white-bg slot, so swapping back is one more tap.
+  // Only runs when the two arrays line up by index.
+  const swapPhotoBg = (index: number) => {
+    if (item.photos.length !== item.whiteBgPhotos.length) return;
+    const bgUri = item.whiteBgPhotos[index];
+    if (!bgUri) return;
+    const photos = [...item.photos];
+    const whiteBgPhotos = [...item.whiteBgPhotos];
+    [photos[index], whiteBgPhotos[index]] = [whiteBgPhotos[index], photos[index]];
+    const next = { ...item, photos, whiteBgPhotos };
+    updateItem(item.id, next);
+    setItem(next);
+    setBgNote('Swapped to the white-background version.');
+    setTimeout(() => setBgNote(''), 3000);
+  };
+
   // Marking an item Sold opens the sold-details prompt (sold price, fees,
   // shipping, date sold) instead of flipping the status on its own. Tapping
   // Sold again on an already-sold item reopens it to edit the details.
@@ -611,9 +629,24 @@ export default function ItemScreen() {
                 </Pressable>
               </View>
             </View>
+            {item.photos.length === item.whiteBgPhotos.length && item.whiteBgPhotos[i] && (
+              <View style={styles.bgSwapRow}>
+                <Image source={{ uri: item.whiteBgPhotos[i] }} style={styles.bgSwapThumb} />
+                <View style={styles.bgSwapText}>
+                  <Text style={styles.photoLabel}>White-background version</Text>
+                  <Pressable
+                    style={styles.swapBtn}
+                    onPress={() => swapPhotoBg(i)}
+                    hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                  >
+                    <Text style={styles.swapBtnText}>Swap to white-bg</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
           </View>
         ))}
-        {item.whiteBgPhotos.length > 0 && (
+        {item.whiteBgPhotos.length > 0 && item.photos.length !== item.whiteBgPhotos.length && (
           <Text style={styles.line}>White-bg versions: {item.whiteBgPhotos.length}</Text>
         )}
         {bgNote !== '' && <Text style={styles.note}>{bgNote}</Text>}
@@ -934,6 +967,22 @@ const styles = StyleSheet.create({
   pass: { color: colors.success, fontWeight: '700' },
   photo: { borderRadius: radius.sm, height: 240, width: '100%' },
   photoWrap: { marginTop: spacing.sm, position: 'relative' },
+  bgSwapRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.sm,
+  },
+  bgSwapThumb: { borderRadius: radius.sm, height: 72, width: 72 },
+  bgSwapText: { flex: 1, gap: spacing.xs },
+  swapBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  swapBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   photoControls: {
     alignItems: 'center',
     flexDirection: 'row',
