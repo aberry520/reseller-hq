@@ -8,6 +8,11 @@
 //
 // The server endpoint: POST {BG_REMOVER_URL}/remove-bg with multipart field
 // `file`, returns a white-background JPEG image. See backend/README.md.
+//
+// The upload uses XMLHttpRequest, not fetch: fetch in this React Native
+// version rejects a FormData file part ({ uri, name, type }) with
+// "Unsupported FormDataPart implementation", while XHR's send(FormData)
+// is the path the native networking stack handles for file URIs.
 
 import * as FileSystem from 'expo-file-system/legacy';
 
@@ -22,17 +27,26 @@ export async function removeBackground(
   const base = (bgRemoverUrl || '').trim().replace(/\/$/, '');
   if (!base) return { ok: false, reason: 'not-configured' };
   try {
-    const form = new FormData();
-    form.append('file', {
-      uri: photoUri,
-      name: 'photo.jpg',
-      type: 'image/jpeg',
-    } as unknown as Blob);
-    const fetched = await fetch(`${base}/remove-bg`, { method: 'POST', body: form });
-    if (!fetched.ok) {
-      return { ok: false, reason: 'server-error', detail: `HTTP ${fetched.status}` };
-    }
-    const blob = await fetched.blob();
+    const blob: Blob = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${base}/remove-bg`);
+      xhr.responseType = 'blob';
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(xhr.response as Blob);
+        } else {
+          reject(new Error(`HTTP ${xhr.status}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error('network error'));
+      const form = new FormData();
+      form.append('file', {
+        uri: photoUri,
+        name: 'photo.jpg',
+        type: 'image/jpeg',
+      } as unknown as Blob);
+      xhr.send(form);
+    });
     const base64: string = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
