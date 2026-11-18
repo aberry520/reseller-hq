@@ -18,7 +18,6 @@ import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import * as MediaLibrary from 'expo-media-library';
 import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
 import { pushItemsToSheetLive } from '../../src/lib/sync';
 import { cleanName } from '../../src/lib/listing';
@@ -34,7 +33,6 @@ import {
 } from '../../src/lib/pricing';
 import { removeBackground } from '../../src/services/bg-remover';
 import DateField from '../../src/components/DateField';
-import CropEditor from '../../src/components/CropEditor';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 import { appliesMacBidFees } from '../../src/lib/types';
 import type { Item } from '../../src/lib/types';
@@ -82,8 +80,6 @@ export default function ItemScreen() {
   const [costsNote, setCostsNote] = useState('');
   // Full-screen photo viewer: index into item.photos, null = closed.
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
-  // Crop editor (CropEditor modal) for the photo in the viewer.
-  const [editorVisible, setEditorVisible] = useState(false);
   const viewerListRef = useRef<FlatList<string> | null>(null);
   // Editable money fields, mirroring the spreadsheet columns.
   const [cost, setCost] = useState('');
@@ -350,56 +346,6 @@ export default function ItemScreen() {
     setItem(next);
     setViewerIndex(0);
     viewerListRef.current?.scrollToIndex({ index: 0, animated: false });
-  };
-
-  // Crop with the system picker's crop UI — the same square crop you get
-  // when choosing a photo. The picker only crops at pick time, so the photo
-  // is saved to the device library first, then the library picker opens
-  // with editing on: tap the photo (it's the most recent) and crop it.
-  // If the library permission is denied (or the save fails), fall back to
-  // the built-in crop editor.
-  const cropWithPicker = async () => {
-    if (viewerIndex === null) return;
-    const uri = item.photos[viewerIndex];
-    if (!uri) return;
-    const { status } = await MediaLibrary.requestPermissionsAsync();
-    if (status !== 'granted') {
-      setEditorVisible(true);
-      return;
-    }
-    try {
-      await MediaLibrary.createAssetAsync(uri);
-    } catch {
-      setEditorVisible(true);
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
-    });
-    if (!result.canceled && result.assets[0]?.uri) {
-      onCropDone(result.assets[0].uri);
-    }
-  };
-
-  // Crop editor result: the edited image's URI. Replace the photo with
-  // the cropped version; its white-bg version was made from the old crop,
-  // so clear it so it can be re-made.
-  const onCropDone = (uri: string) => {
-    setEditorVisible(false);
-    if (viewerIndex === null || !uri) return;
-    const photos = [...item.photos];
-    photos[viewerIndex] = uri;
-    let whiteBgPhotos = item.whiteBgPhotos;
-    if (item.photos.length === item.whiteBgPhotos.length) {
-      whiteBgPhotos = [...item.whiteBgPhotos];
-      whiteBgPhotos[viewerIndex] = '';
-    }
-    const next = { ...item, photos, whiteBgPhotos };
-    updateItem(item.id, next);
-    setItem(next);
   };
 
   // Marking an item Sold opens the sold-details prompt (sold price, fees,
@@ -913,13 +859,6 @@ export default function ItemScreen() {
         {viewerIndex !== null && (
           <View style={[styles.viewerActions, { paddingBottom: insets.bottom + spacing.md }]}>
             <Pressable
-              style={styles.viewerActionBtn}
-              onPress={() => void cropWithPicker()}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            >
-              <Text style={styles.viewerActionText}>Crop</Text>
-            </Pressable>
-            <Pressable
               style={[styles.viewerActionBtn, busy && styles.viewerActionBtnDisabled]}
               disabled={busy}
               onPress={() => void viewerWhiteBg(viewerIndex)}
@@ -950,15 +889,6 @@ export default function ItemScreen() {
         )}
       </View>
     </Modal>
-
-    {/* Built-in crop editor — fallback when the system picker crop can't
-        run (photo library permission denied or the save fails). */}
-    <CropEditor
-      visible={editorVisible}
-      imageUri={viewerIndex !== null ? item.photos[viewerIndex] : undefined}
-      onClose={() => setEditorVisible(false)}
-      onDone={onCropDone}
-    />
 
     <Modal
       visible={soldModalVisible}
