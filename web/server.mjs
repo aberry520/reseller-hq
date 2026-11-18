@@ -37,7 +37,13 @@ const server = createServer(async (req, res) => {
       return;
     }
     const body = await readFile(file);
-    res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream' });
+    // Never cache: the inventory (items.json) and the app code change
+    // under the user, and a cached copy shows stale RB labels after an
+    // ID rename even though the file on disk is already RHQ.
+    res.writeHead(200, {
+      'Content-Type': TYPES[extname(file)] || 'application/octet-stream',
+      'Cache-Control': 'no-store',
+    });
     res.end(body);
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain' });

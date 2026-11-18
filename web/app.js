@@ -262,7 +262,9 @@
   });
 
   // ---- Load ----
-  fetch('items.json')
+  // no-store: the browser must not serve a cached items.json after the
+  // file is regenerated (that showed stale RB labels after the RHQ rename).
+  fetch('items.json', { cache: 'no-store' })
     .then(function (r) {
       if (!r.ok) throw new Error('items.json not found (HTTP ' + r.status + ')');
       return r.json();
