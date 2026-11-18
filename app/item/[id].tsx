@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Dimensions,
+  FlatList,
   Image,
   Modal,
   Pressable,
@@ -16,6 +18,7 @@ import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { ImageEditor } from 'expo-image-editor';
 import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
 import { pushItemsToSheetLive } from '../../src/lib/sync';
 import { cleanName } from '../../src/lib/listing';
@@ -65,6 +68,9 @@ export default function ItemScreen() {
   const [costsNote, setCostsNote] = useState('');
   // Full-screen photo viewer: index into item.photos, null = closed.
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  // Crop editor (expo-image-editor modal) for the photo in the viewer.
+  const [editorVisible, setEditorVisible] = useState(false);
+  const viewerListRef = useRef<FlatList<string> | null>(null);
   // Editable money fields, mirroring the spreadsheet columns.
   const [cost, setCost] = useState('');
   const [estShipStr, setEstShipStr] = useState('');
@@ -261,23 +267,6 @@ export default function ItemScreen() {
     ]);
   };
 
-  const movePhoto = (uri: string, dir: -1 | 1) => {
-    const idx = item.photos.indexOf(uri);
-    const nextIdx = idx + dir;
-    if (idx < 0 || nextIdx < 0 || nextIdx >= item.photos.length) return;
-    const photos = [...item.photos];
-    [photos[idx], photos[nextIdx]] = [photos[nextIdx], photos[idx]];
-    // Keep the white-bg versions in the same order when the arrays line up.
-    let whiteBgPhotos = item.whiteBgPhotos;
-    if (item.photos.length === item.whiteBgPhotos.length) {
-      whiteBgPhotos = [...item.whiteBgPhotos];
-      [whiteBgPhotos[idx], whiteBgPhotos[nextIdx]] = [whiteBgPhotos[nextIdx], whiteBgPhotos[idx]];
-    }
-    const next = { ...item, photos, whiteBgPhotos };
-    updateItem(item.id, next);
-    setItem(next);
-  };
-
   // Swap a photo with its white-background version: the white-bg becomes
   // the photo shown (and the cover, if it was first), and the original
   // moves into the white-bg slot, so swapping back is one more tap.
@@ -294,6 +283,78 @@ export default function ItemScreen() {
     setItem(next);
     setBgNote('Swapped to the white-background version.');
     setTimeout(() => setBgNote(''), 3000);
+  };
+
+  // White-background button in the viewer: if this photo has no white-bg
+  // version yet, make one and swap to it; if it already has one, swap
+  // between the two versions.
+  const viewerWhiteBg = async (index: number) => {
+    if (busy) return;
+    const aligned = item.photos.length === item.whiteBgPhotos.length;
+    if (aligned && item.whiteBgPhotos[index]) {
+      swapPhotoBg(index);
+      return;
+    }
+    if (!settings.bgRemoverUrl) {
+      setBgNote('BG remover not set — set the URL in Settings first.');
+      return;
+    }
+    setBusy(true);
+    const bg = await removeBackground(item.photos[index], settings.bgRemoverUrl);
+    setBusy(false);
+    if (!bg.ok) {
+      setBgNote(
+        `Background removal failed (${bg.reason}${bg.detail ? `: ${bg.detail}` : ''}) — original kept.`,
+      );
+      return;
+    }
+    const whiteBgPhotos =
+      item.photos.length === item.whiteBgPhotos.length
+        ? [...item.whiteBgPhotos]
+        : new Array<string>(item.photos.length).fill('');
+    whiteBgPhotos[index] = bg.uri;
+    const withBg = { ...item, whiteBgPhotos };
+    updateItem(item.id, withBg);
+    setItem(withBg);
+    swapPhotoBg(index);
+  };
+
+  // Make the photo in the viewer the cover (first photo). Its white-bg
+  // version moves with it when the arrays line up.
+  const makeCover = (index: number) => {
+    if (index <= 0) return;
+    const photos = [...item.photos];
+    const [moved] = photos.splice(index, 1);
+    photos.unshift(moved);
+    let whiteBgPhotos = item.whiteBgPhotos;
+    if (item.photos.length === item.whiteBgPhotos.length) {
+      whiteBgPhotos = [...item.whiteBgPhotos];
+      const [movedBg] = whiteBgPhotos.splice(index, 1);
+      whiteBgPhotos.unshift(movedBg);
+    }
+    const next = { ...item, photos, whiteBgPhotos };
+    updateItem(item.id, next);
+    setItem(next);
+    setViewerIndex(0);
+    viewerListRef.current?.scrollToIndex({ index: 0, animated: false });
+  };
+
+  // Crop editor result: the editor returns the edited image ({ uri, ... }).
+  // Replace the photo with the cropped version; its white-bg version was
+  // made from the old crop, so clear it so it can be re-made.
+  const onCropDone = (result: { uri?: string }) => {
+    setEditorVisible(false);
+    if (viewerIndex === null || !result?.uri) return;
+    const photos = [...item.photos];
+    photos[viewerIndex] = result.uri;
+    let whiteBgPhotos = item.whiteBgPhotos;
+    if (item.photos.length === item.whiteBgPhotos.length) {
+      whiteBgPhotos = [...item.whiteBgPhotos];
+      whiteBgPhotos[viewerIndex] = '';
+    }
+    const next = { ...item, photos, whiteBgPhotos };
+    updateItem(item.id, next);
+    setItem(next);
   };
 
   // Marking an item Sold opens the sold-details prompt (sold price, fees,
@@ -631,64 +692,35 @@ export default function ItemScreen() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Photos ({item.photos.length})</Text>
-        <Text style={styles.note}>Photos are cropped square (1:1) for eBay — adjust the crop when you take one. Take all your photos first, then remove backgrounds for all of them at once.</Text>
+        <Text style={styles.note}>Photos are cropped square (1:1) for eBay — adjust the crop when you take one. Take all your photos first, then remove backgrounds for all of them at once. Tap a photo to open it, swipe between photos, and crop or whiten it there.</Text>
         {item.photos.length === 0 && <Text style={styles.line}>No photos yet.</Text>}
-        {item.photos.map((uri, i) => (
-          <View key={uri} style={styles.photoWrap}>
-            <Pressable onPress={() => setViewerIndex(i)} accessibilityLabel="Open photo full screen">
-              <Image source={{ uri }} style={styles.photo} />
-            </Pressable>
-            <Pressable
-              style={styles.removeBtn}
-              onPress={() => removePhoto(uri)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel="Remove photo"
-            >
-              <Text style={styles.removeBtnText}>✕</Text>
-            </Pressable>
-            <View style={styles.photoControls}>
-              <Text style={styles.photoLabel}>
-                {i === 0 ? 'Cover photo' : `Photo ${i + 1} of ${item.photos.length}`}
-              </Text>
-              <View style={styles.moveRow}>
-                <Pressable
-                  style={[styles.moveBtn, i === 0 && styles.moveBtnDisabled]}
-                  disabled={i === 0}
-                  onPress={() => movePhoto(uri, -1)}
-                  hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-                >
-                  <Text style={styles.moveBtnText}>↑ Up</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.moveBtn, i === item.photos.length - 1 && styles.moveBtnDisabled]}
-                  disabled={i === item.photos.length - 1}
-                  onPress={() => movePhoto(uri, 1)}
-                  hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-                >
-                  <Text style={styles.moveBtnText}>↓ Down</Text>
-                </Pressable>
-              </View>
-            </View>
-            {item.photos.length === item.whiteBgPhotos.length && item.whiteBgPhotos[i] && (
-              <View style={styles.bgSwapRow}>
-                <Image source={{ uri: item.whiteBgPhotos[i] }} style={styles.bgSwapThumb} />
-                <View style={styles.bgSwapText}>
-                  <Text style={styles.photoLabel}>White-background version</Text>
-                  <Pressable
-                    style={styles.swapBtn}
-                    onPress={() => swapPhotoBg(i)}
-                    hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-                  >
-                    <Text style={styles.swapBtnText}>Swap to white-bg</Text>
-                  </Pressable>
+        <View style={styles.photoGrid}>
+          {item.photos.map((uri, i) => (
+            <View key={uri} style={styles.gridCell}>
+              <Pressable onPress={() => setViewerIndex(i)} accessibilityLabel={`Open photo ${i + 1} full screen`}>
+                <Image source={{ uri }} style={styles.gridThumb} />
+              </Pressable>
+              {i === 0 && (
+                <View style={styles.coverBadge}>
+                  <Text style={styles.coverBadgeText}>Cover</Text>
                 </View>
-              </View>
-            )}
-          </View>
-        ))}
-        {item.whiteBgPhotos.length > 0 && item.photos.length !== item.whiteBgPhotos.length && (
-          <Text style={styles.line}>White-bg versions: {item.whiteBgPhotos.length}</Text>
-        )}
+              )}
+              {item.photos.length === item.whiteBgPhotos.length && item.whiteBgPhotos[i] && (
+                <View style={styles.wbBadge}>
+                  <Text style={styles.wbBadgeText}>WB</Text>
+                </View>
+              )}
+              <Pressable
+                style={styles.gridRemoveBtn}
+                onPress={() => removePhoto(uri)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel="Remove photo"
+              >
+                <Text style={styles.removeBtnText}>✕</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
         {bgNote !== '' && <Text style={styles.note}>{bgNote}</Text>}
         {busy && bgNote === '' && <Text style={styles.note}>Removing background…</Text>}
         <View style={styles.btnRow}>
@@ -805,37 +837,86 @@ export default function ItemScreen() {
           </Pressable>
         </View>
         {viewerIndex !== null && (
-          <Image
-            source={{ uri: item.photos[viewerIndex] }}
-            style={styles.viewerImage}
-            resizeMode="contain"
+          <FlatList
+            key="viewer-open"
+            ref={viewerListRef}
+            data={item.photos}
+            keyExtractor={(uri) => uri}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            initialScrollIndex={viewerIndex}
+            getItemLayout={(_, index) => ({
+              length: Dimensions.get('window').width,
+              offset: Dimensions.get('window').width * index,
+              index,
+            })}
+            onMomentumScrollEnd={(e) => {
+              const w = Dimensions.get('window').width;
+              const next = Math.round(e.nativeEvent.contentOffset.x / w);
+              if (next >= 0 && next < item.photos.length) setViewerIndex(next);
+            }}
+            renderItem={({ item: uri }) => (
+              <Image
+                source={{ uri }}
+                style={[styles.viewerImage, { width: Dimensions.get('window').width }]}
+                resizeMode="contain"
+              />
+            )}
           />
         )}
-        <View style={[styles.viewerNav, { paddingBottom: insets.bottom + spacing.md }]}>
-          <Pressable
-            style={[styles.viewerNavBtn, viewerIndex === 0 && styles.viewerNavBtnDisabled]}
-            disabled={viewerIndex === 0}
-            onPress={() => setViewerIndex((i) => (i === null ? i : Math.max(0, i - 1)))}
-            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-          >
-            <Text style={styles.viewerNavText}>‹ Prev</Text>
-          </Pressable>
-          <Pressable
-            style={[
-              styles.viewerNavBtn,
-              viewerIndex === item.photos.length - 1 && styles.viewerNavBtnDisabled,
-            ]}
-            disabled={viewerIndex === item.photos.length - 1}
-            onPress={() =>
-              setViewerIndex((i) => (i === null ? i : Math.min(item.photos.length - 1, i + 1)))
-            }
-            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-          >
-            <Text style={styles.viewerNavText}>Next ›</Text>
-          </Pressable>
-        </View>
+        {viewerIndex !== null && (
+          <View style={[styles.viewerActions, { paddingBottom: insets.bottom + spacing.md }]}>
+            <Pressable
+              style={styles.viewerActionBtn}
+              onPress={() => setEditorVisible(true)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Text style={styles.viewerActionText}>Crop</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.viewerActionBtn, busy && styles.viewerActionBtnDisabled]}
+              disabled={busy}
+              onPress={() => void viewerWhiteBg(viewerIndex)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Text style={styles.viewerActionText}>
+                {item.photos.length === item.whiteBgPhotos.length && item.whiteBgPhotos[viewerIndex]
+                  ? 'Swap white-bg'
+                  : 'White-bg'}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.viewerActionBtn, viewerIndex === 0 && styles.viewerActionBtnDisabled]}
+              disabled={viewerIndex === 0}
+              onPress={() => makeCover(viewerIndex)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Text style={styles.viewerActionText}>Make cover</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.viewerActionBtn, styles.viewerDoneBtn]}
+              onPress={() => setViewerIndex(null)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Text style={styles.viewerActionText}>Done</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
     </Modal>
+
+    {/* Crop editor for the photo in the viewer (square, for eBay). */}
+    <ImageEditor
+      visible={editorVisible}
+      imageUri={viewerIndex !== null ? item.photos[viewerIndex] : undefined}
+      onCloseEditor={() => setEditorVisible(false)}
+      onEditingComplete={onCropDone}
+      mode="crop-only"
+      fixedCropAspectRatio={1}
+      lockAspectRatio
+      allowedTransformOperations={['crop', 'rotate']}
+    />
 
     <Modal
       visible={soldModalVisible}
@@ -1018,51 +1099,39 @@ const styles = StyleSheet.create({
   notFoundText: { color: colors.text, fontSize: 16 },
   note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.sm },
   pass: { color: colors.success, fontWeight: '700' },
-  photo: { borderRadius: radius.sm, height: 240, width: '100%' },
-  photoWrap: { marginTop: spacing.sm, position: 'relative' },
-  bgSwapRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.sm,
-  },
-  bgSwapThumb: { borderRadius: radius.sm, height: 72, width: 72 },
-  bgSwapText: { flex: 1, gap: spacing.xs },
-  swapBtn: {
-    alignSelf: 'flex-start',
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
+  gridCell: { aspectRatio: 1, position: 'relative', width: '31%' },
+  gridThumb: { borderRadius: radius.sm, height: '100%', width: '100%' },
+  coverBadge: {
     backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderRadius: 4,
+    left: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    position: 'absolute',
+    top: 6,
   },
-  swapBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  photoControls: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.xs,
+  coverBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  wbBadge: {
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 4,
+    bottom: 6,
+    left: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    position: 'absolute',
   },
-  photoLabel: { color: colors.muted, fontSize: 13 },
-  moveRow: { flexDirection: 'row', gap: spacing.sm },
-  moveBtn: {
-    backgroundColor: colors.chip,
-    borderRadius: 8,
-    justifyContent: 'center',
-    minHeight: 36,
-    paddingHorizontal: 12,
-  },
-  moveBtnDisabled: { opacity: 0.4 },
-  moveBtnText: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  removeBtn: {
+  wbBadgeText: { color: colors.text, fontSize: 11, fontWeight: '700' },
+  gridRemoveBtn: {
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 16,
-    height: 32,
+    borderRadius: 14,
+    height: 28,
     justifyContent: 'center',
     position: 'absolute',
-    right: 8,
-    top: 8,
-    width: 32,
+    right: 6,
+    top: 6,
+    width: 28,
     zIndex: 1,
   },
   removeBtnText: { color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 20 },
@@ -1084,21 +1153,24 @@ const styles = StyleSheet.create({
     width: 36,
   },
   viewerCloseText: { color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 20 },
-  viewerImage: { flex: 1, width: '100%' },
-  viewerNav: {
+  viewerImage: { flex: 1 },
+  viewerActions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    justifyContent: 'center',
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
   },
-  viewerNavBtn: {
+  viewerActionBtn: {
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.2)',
     borderRadius: radius.sm,
     justifyContent: 'center',
     minHeight: minTouchHeight,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
-  viewerNavBtnDisabled: { opacity: 0.35 },
-  viewerNavText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  viewerActionBtnDisabled: { opacity: 0.35 },
+  viewerActionText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  viewerDoneBtn: { backgroundColor: colors.primary },
 });
