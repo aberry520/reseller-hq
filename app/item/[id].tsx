@@ -147,13 +147,31 @@ export default function ItemScreen() {
     uploadingRef.current = true;
     setUploading(true);
     try {
-      const res = await uploadItemPhotos(target, { forceIndices });
-      if (res.errors.length > 0) {
+      // Upload the snapshot we were handed first (forced indices
+      // included). Then re-read the item and keep going while photos
+      // still lack a URL and the last round made progress — a photo
+      // added while an upload was in flight gets picked up here instead
+      // of being skipped because the guard turned its own trigger away.
+      let totalUploaded = 0;
+      let errors: string[] = [];
+      let current: Item | null = target;
+      let force = forceIndices;
+      while (current) {
+        const res = await uploadItemPhotos(current, { forceIndices: force });
+        force = undefined;
+        totalUploaded += res.uploaded;
+        errors = res.errors;
+        if (res.errors.length > 0 || res.uploaded === 0) break;
+        const fresh = getItem(current.id);
+        if (!fresh || !fresh.photos.some((_, i) => !(fresh.photoUrls ?? [])[i])) break;
+        current = fresh;
+      }
+      if (errors.length > 0) {
         setUploadNote(
-          `Upload failed for ${res.errors.length} photo${res.errors.length === 1 ? '' : 's'} — tap Retry upload.`,
+          `Upload failed for ${errors.length} photo${errors.length === 1 ? '' : 's'} — tap Retry upload.`,
         );
-      } else if (res.uploaded > 0) {
-        setUploadNote(`✓ Uploaded ${res.uploaded} photo${res.uploaded === 1 ? '' : 's'} to Drive.`);
+      } else if (totalUploaded > 0) {
+        setUploadNote(`✓ Uploaded ${totalUploaded} photo${totalUploaded === 1 ? '' : 's'} to Drive.`);
         refresh();
       }
     } catch {
