@@ -360,7 +360,7 @@ export default function ItemScreen() {
     }
   };
 
-  const removePhoto = (uri: string) => {
+  const removePhoto = (uri: string, onRemoved?: () => void) => {
     Alert.alert('Remove photo?', 'This removes the photo from this item.', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -397,6 +397,7 @@ export default function ItemScreen() {
           // it does not linger as an orphan.
           pushItemsToSheetLive([next]);
           if (removedUrl) void deletePhotoFromDrive(removedUrl);
+          onRemoved?.();
         },
       },
     ]);
@@ -1156,6 +1157,20 @@ export default function ItemScreen() {
               </Pressable>
             ) : null}
             <Pressable
+              style={[
+                styles.viewerActionBtn,
+                styles.viewerDeleteBtn,
+                !displayPhotos[viewerIndex]?.hasLocal && styles.viewerActionBtnDisabled,
+              ]}
+              disabled={!displayPhotos[viewerIndex]?.hasLocal}
+              onPress={() =>
+                removePhoto(item.photos[viewerIndex], () => setViewerIndex(null))
+              }
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Text style={styles.viewerActionText}>Delete</Text>
+            </Pressable>
+            <Pressable
               style={[styles.viewerActionBtn, styles.viewerDoneBtn]}
               onPress={() => setViewerIndex(null)}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
@@ -1442,4 +1457,5 @@ const styles = StyleSheet.create({
   viewerActionBtnDisabled: { opacity: 0.35 },
   viewerActionText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   viewerDoneBtn: { backgroundColor: colors.primary },
+  viewerDeleteBtn: { backgroundColor: '#cf222e' },
 });
