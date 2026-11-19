@@ -51,13 +51,6 @@
 var SPREADSHEET_ID = '10wBKzvzqS4IyFIUGTI6vbfDQr2FTLn9bkpL1Mcg9Snk';
 var SHEET_NAME = 'Inventory';   // the tab with the inventory
 var APP_ID_HEADER = 'App ID';   // the column that holds the app's item id
-// The Drive folder photos are uploaded to. Create the folder in Drive
-// yourself, open it, and paste the ID from its URL
-// (drive.google.com/drive/folders/<ID>). Pointing at an existing folder
-// avoids DriveApp.createFolder, which some deployments refuse even when
-// the script is authorized for Drive. Leave '' to fall back to finding
-// (or creating) a folder named "Reseller HQ Photos".
-var PHOTOS_FOLDER_ID = '';
 // The sheet's own fee/margin used by its Suggested/Min formulas (decimals).
 var SHEET_FEE_PCT = 0.13;
 var SHEET_MARGIN_PCT = 0.30;
@@ -527,16 +520,9 @@ function doPost(e) {
       }
       var upName = str_(body.filename || '').trim() || (upItemId + '-' + (upIndex + 1) + '.jpg');
       var upMime = str_(body.mimeType || '').trim() || 'image/jpeg';
-      // Use the configured folder when set (no createFolder call). Fall
-      // back to finding — or creating — "Reseller HQ Photos" when it is
-      // not set.
-      var folder;
-      if (PHOTOS_FOLDER_ID) {
-        folder = DriveApp.getFolderById(PHOTOS_FOLDER_ID);
-      } else {
-        var folders = DriveApp.getFoldersByName('Reseller HQ Photos');
-        folder = folders.hasNext() ? folders.next() : DriveApp.createFolder('Reseller HQ Photos');
-      }
+      // Find the "Reseller HQ Photos" folder, creating it the first time.
+      var folders = DriveApp.getFoldersByName('Reseller HQ Photos');
+      var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder('Reseller HQ Photos');
       var existing = folder.getFilesByName(upName);
       while (existing.hasNext()) existing.next().setTrashed(true);
       var blob = Utilities.newBlob(Utilities.base64Decode(upData), upMime, upName);
