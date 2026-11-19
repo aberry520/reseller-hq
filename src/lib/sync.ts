@@ -11,6 +11,7 @@
 // comes from Settings (syncSheet, default 'Inventory').
 
 import { Alert } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import {
   addItem,
   clearAppItems,
@@ -90,6 +91,9 @@ async function postSync(body: Record<string, unknown>): Promise<{
   written?: number;
   cleared?: number;
   errors?: string[];
+  // uploadPhoto returns these.
+  fileId?: string;
+  url?: string;
 }> {
   const { url, token, tab } = syncConfig();
   const res = await fetch(url, {
@@ -108,6 +112,8 @@ async function postSync(body: Record<string, unknown>): Promise<{
     written?: number;
     cleared?: number;
     errors?: string[];
+    fileId?: string;
+    url?: string;
   };
   if (data.error) throw new Error(`Sheet sync failed: ${data.error}`);
   return data;
@@ -316,6 +322,77 @@ export async function pushEbayDrafts(items: Item[]): Promise<{
     skipped: extra.skipped ?? [],
     errors: data.errors ?? [],
   };
+}
+
+// Read a local photo as a base64 string. Handles the three URI shapes the
+// app stores: a data: URL (already base64), a blob: URL (web picker), and
+// a file:// URI (native, via FileSystem).
+async function readPhotoBase64(uri: string): Promise<string> {
+  if (uri.startsWith('data:')) return uri.split(',')[1] ?? '';
+  if (uri.startsWith('blob:')) {
+    const res = await fetch(uri);
+    const blob = await res.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
+      reader.onerror = () => reject(new Error('failed to read image'));
+      reader.readAsDataURL(blob);
+    });
+  }
+  return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+}
+
+// Upload an item's photos to Google Drive (manual, from the item screen).
+// Only photos that do not have a URL yet are uploaded — upload once the
+// white-bg version is ready. Each photo goes up as the white-bg version
+// when one exists, otherwise the original. The Apps Script saves it to
+// the "Reseller HQ Photos" folder, shares it "anyone with the link", and
+// returns a public URL, which is stored on the item (photoUrls, aligned
+// by index with photos) and pushed to the sheet's Photo URLs column right
+// away, so the photo is reachable from the web version and the posting
+// extension — the local file only exists on the phone that took it.
+// Returns how many were uploaded, how many were already up, and any
+// per-photo errors. A re-edited photo (new white-bg version) is NOT
+// re-uploaded by this — its URL still points at the old upload.
+export async function uploadItemPhotos(item: Item): Promise<{
+  uploaded: number;
+  already: number;
+  errors: string[];
+}> {
+  const urls = [...(item.photoUrls ?? [])];
+  let uploaded = 0;
+  let already = 0;
+  const errors: string[] = [];
+  for (let i = 0; i < item.photos.length; i++) {
+    if (urls[i]) {
+      already++;
+      continue;
+    }
+    const uri = item.whiteBgPhotos[i] || item.photos[i];
+    if (!uri) continue;
+    try {
+      const base64 = await readPhotoBase64(uri);
+      if (!base64) throw new Error('could not read photo');
+      const data = await postSync({
+        action: 'uploadPhoto',
+        itemId: item.id,
+        index: i,
+        filename: `${item.id}-${i + 1}.jpg`,
+        mimeType: 'image/jpeg',
+        data: base64,
+      });
+      if (!data.url) throw new Error('no URL returned');
+      urls[i] = data.url;
+      uploaded++;
+    } catch (e) {
+      errors.push(`photo ${i + 1}: ${e instanceof Error ? e.message : 'upload failed'}`);
+    }
+  }
+  if (uploaded > 0) {
+    updateItem(item.id, { photoUrls: urls });
+    pushItemsToSheetLive([{ ...item, photoUrls: urls }]);
+  }
+  return { uploaded, already, errors };
 }
 
 // Push one or more items to the sheet as upserts (merge). Used when an

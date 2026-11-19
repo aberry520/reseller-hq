@@ -76,6 +76,13 @@ export interface Item {
   photos: string[]; // local URIs
   whiteBgPhotos: string[]; // local URIs after background removal
   createdAt: string;
+  // Hosted photo URLs (Google Drive), aligned by index with photos /
+  // whiteBgPhotos. '' = not uploaded yet. Uploaded manually (item screen
+  // "Upload photos") once the white-bg version is ready, so the photos
+  // are reachable from the web version and from the posting extension —
+  // the local URIs only exist on the phone that took them. Synced to the
+  // sheet's "Photo URLs" column so the web app can read them.
+  photoUrls: string[];
   // eBay draft fields, set per item in the app (not synced to the
   // Inventory tab — the sheet has no columns for them). Used when
   // generating rows for the ebay-draft tab.

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Dimensions,
@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
-import { pushItemsToSheetLive } from '../../src/lib/sync';
+import { pushItemsToSheetLive, uploadItemPhotos } from '../../src/lib/sync';
 import { cleanName } from '../../src/lib/listing';
 import {
   ebayMargin,
@@ -81,6 +81,9 @@ export default function ItemScreen() {
   const [busy, setBusy] = useState(false);
   const [statusNote, setStatusNote] = useState('');
   const [costsNote, setCostsNote] = useState('');
+  // Manual photo upload to Drive: only photos without a URL yet go up.
+  const [uploadNote, setUploadNote] = useState('');
+  const [uploading, setUploading] = useState(false);
   // eBay draft fields (per item): category ID + condition, used when
   // sending the item to the ebay-draft tab.
   const [ebayCategoryId, setEbayCategoryId] = useState('');
@@ -269,6 +272,58 @@ export default function ItemScreen() {
     setTimeout(() => setBgNote(''), 4000);
   };
 
+  // Manual photo upload to Drive: only photos without a URL yet go up
+  // (upload once the white-bg version is ready). The URLs land on the
+  // item and in the sheet's Photo URLs column, so the photos are
+  // reachable from the web version and the posting extension.
+  const uploadPhotos = async () => {
+    if (uploading) return;
+    if (item.photos.length === 0 && (item.photoUrls ?? []).filter(Boolean).length === 0) {
+      setUploadNote('No photos yet.');
+      setTimeout(() => setUploadNote(''), 3000);
+      return;
+    }
+    setUploading(true);
+    setUploadNote('Uploading photos…');
+    const res = await uploadItemPhotos(item);
+    setUploading(false);
+    if (res.errors.length > 0) {
+      setUploadNote(`Uploaded ${res.uploaded}, ${res.errors.length} failed: ${res.errors[0]}`);
+    } else if (res.uploaded === 0) {
+      setUploadNote(
+        res.already > 0
+          ? 'All photos are already uploaded.'
+          : 'Nothing to upload — add photos first.',
+      );
+    } else {
+      setUploadNote(`✓ Uploaded ${res.uploaded} photo${res.uploaded === 1 ? '' : 's'} to Drive.`);
+      refresh();
+    }
+    setTimeout(() => setUploadNote(''), 5000);
+  };
+
+  // Photos to display: one entry per index up to the longer of the local
+  // photos and the hosted URLs. Prefers the white-bg local file (fast,
+  // works offline on the phone), then the Drive URL (the only copy the
+  // web version has — local files only exist on the phone that took
+  // them), then the original local file. `uploaded` = this photo has a
+  // Drive URL; `hasLocal` = a local file exists (needed for White-bg /
+  // Make cover / Remove, which all work on the local file).
+  const displayPhotos = useMemo(() => {
+    const urls = item.photoUrls ?? [];
+    const wb = alignWhiteBg(item.photos, item.whiteBgPhotos);
+    const n = Math.max(item.photos.length, urls.length);
+    const out: { uri: string; uploaded: boolean; hasLocal: boolean }[] = [];
+    for (let i = 0; i < n; i++) {
+      out.push({
+        uri: wb[i] || urls[i] || item.photos[i] || '',
+        uploaded: !!urls[i],
+        hasLocal: !!item.photos[i],
+      });
+    }
+    return out;
+  }, [item.photos, item.whiteBgPhotos, item.photoUrls]);
+
   const removePhoto = (uri: string) => {
     Alert.alert('Remove photo?', 'This removes the photo from this item.', [
       { text: 'Cancel', style: 'cancel' },
@@ -288,7 +343,14 @@ export default function ItemScreen() {
             whiteBgPhotos = item.whiteBgPhotos.filter((_, i) => i !== idx);
           }
           if (photos.length === 0) whiteBgPhotos = [];
-          const next = { ...item, photos, whiteBgPhotos };
+          // Photo URLs line up with photos by index too — drop the URL for
+          // the removed photo so the remaining URLs stay aligned.
+          let photoUrls = item.photoUrls ?? [];
+          if (idx >= 0 && item.photos.length === photoUrls.length) {
+            photoUrls = photoUrls.filter((_, i) => i !== idx);
+          }
+          if (photos.length === 0) photoUrls = [];
+          const next = { ...item, photos, whiteBgPhotos, photoUrls };
           updateItem(item.id, next);
           setItem(next);
         },
@@ -355,7 +417,14 @@ export default function ItemScreen() {
       const [movedBg] = whiteBgPhotos.splice(index, 1);
       whiteBgPhotos.unshift(movedBg);
     }
-    const next = { ...item, photos, whiteBgPhotos };
+    // Photo URLs move with their photo so the URLs stay aligned.
+    let photoUrls = item.photoUrls ?? [];
+    if (item.photos.length === photoUrls.length) {
+      photoUrls = [...photoUrls];
+      const [movedUrl] = photoUrls.splice(index, 1);
+      photoUrls.unshift(movedUrl);
+    }
+    const next = { ...item, photos, whiteBgPhotos, photoUrls };
     updateItem(item.id, next);
     setItem(next);
     setViewerIndex(0);
@@ -707,14 +776,14 @@ export default function ItemScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Photos ({item.photos.length})</Text>
+        <Text style={styles.cardTitle}>Photos ({displayPhotos.length})</Text>
         <Text style={styles.note}>Photos are cropped square (1:1) for eBay — adjust the crop when you take one. Take all your photos first, then remove backgrounds for all of them at once. Tap a photo to open it, swipe between photos, and crop or whiten it there.</Text>
-        {item.photos.length === 0 && <Text style={styles.line}>No photos yet.</Text>}
+        {displayPhotos.length === 0 && <Text style={styles.line}>No photos yet.</Text>}
         <View style={styles.photoGrid}>
-          {item.photos.map((uri, i) => (
-            <View key={uri} style={styles.gridCell}>
+          {displayPhotos.map((p, i) => (
+            <View key={p.uri || `photo-${i}`} style={styles.gridCell}>
               <Pressable onPress={() => setViewerIndex(i)} accessibilityLabel={`Open photo ${i + 1} full screen`}>
-                <Image source={{ uri }} style={styles.gridThumb} />
+                <Image source={{ uri: p.uri }} style={styles.gridThumb} />
               </Pressable>
               {i === 0 && (
                 <View style={styles.coverBadge}>
@@ -726,14 +795,21 @@ export default function ItemScreen() {
                   <Text style={styles.wbBadgeText}>WB</Text>
                 </View>
               )}
-              <Pressable
-                style={styles.gridRemoveBtn}
-                onPress={() => removePhoto(uri)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityLabel="Remove photo"
-              >
-                <Text style={styles.removeBtnText}>✕</Text>
-              </Pressable>
+              {p.uploaded && (
+                <View style={[styles.wbBadge, styles.uploadedBadge]}>
+                  <Text style={styles.uploadedBadgeText}>↑ Drive</Text>
+                </View>
+              )}
+              {p.hasLocal && (
+                <Pressable
+                  style={styles.gridRemoveBtn}
+                  onPress={() => removePhoto(item.photos[i])}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel="Remove photo"
+                >
+                  <Text style={styles.removeBtnText}>✕</Text>
+                </Pressable>
+              )}
             </View>
           ))}
         </View>
@@ -759,6 +835,20 @@ export default function ItemScreen() {
             </Text>
           </Pressable>
         )}
+        {displayPhotos.length > 0 && (
+          <Pressable
+            style={[styles.btn, styles.bigBtn, uploading && styles.btnDisabled]}
+            disabled={uploading}
+            onPress={() => void uploadPhotos()}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+          >
+            <Text style={styles.btnText}>
+              {uploading ? 'Uploading photos…' : 'Upload photos to Drive'}
+            </Text>
+          </Pressable>
+        )}
+        {uploadNote !== '' && <Text style={styles.note}>{uploadNote}</Text>}
+        <Text style={styles.note}>Uploading saves the white-bg photos to Google Drive so you can see them in the web version and the posting extension can use them. Only photos without a Drive link yet are uploaded.</Text>
       </View>
 
       <View style={styles.card}>
@@ -899,7 +989,7 @@ export default function ItemScreen() {
       <View style={styles.viewer}>
         <View style={[styles.viewerTop, { paddingTop: insets.top + spacing.sm }]}>
           <Text style={styles.viewerCount}>
-            {viewerIndex !== null ? `${viewerIndex + 1} of ${item.photos.length}` : ''}
+            {viewerIndex !== null ? `${viewerIndex + 1} of ${displayPhotos.length}` : ''}
           </Text>
           <Pressable
             style={styles.viewerClose}
@@ -914,7 +1004,7 @@ export default function ItemScreen() {
           <FlatList
             key="viewer-open"
             ref={viewerListRef}
-            data={item.photos}
+            data={displayPhotos.map((p) => p.uri)}
             keyExtractor={(uri) => uri}
             horizontal
             pagingEnabled
@@ -928,7 +1018,7 @@ export default function ItemScreen() {
             onMomentumScrollEnd={(e) => {
               const w = Dimensions.get('window').width;
               const next = Math.round(e.nativeEvent.contentOffset.x / w);
-              if (next >= 0 && next < item.photos.length) setViewerIndex(next);
+              if (next >= 0 && next < displayPhotos.length) setViewerIndex(next);
             }}
             renderItem={({ item: uri }) => (
               <Image
@@ -942,8 +1032,11 @@ export default function ItemScreen() {
         {viewerIndex !== null && (
           <View style={[styles.viewerActions, { paddingBottom: insets.bottom + spacing.md }]}>
             <Pressable
-              style={[styles.viewerActionBtn, busy && styles.viewerActionBtnDisabled]}
-              disabled={busy}
+              style={[
+                styles.viewerActionBtn,
+                (busy || !displayPhotos[viewerIndex]?.hasLocal) && styles.viewerActionBtnDisabled,
+              ]}
+              disabled={busy || !displayPhotos[viewerIndex]?.hasLocal}
               onPress={() => void viewerWhiteBg(viewerIndex)}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
@@ -954,8 +1047,12 @@ export default function ItemScreen() {
               </Text>
             </Pressable>
             <Pressable
-              style={[styles.viewerActionBtn, viewerIndex === 0 && styles.viewerActionBtnDisabled]}
-              disabled={viewerIndex === 0}
+              style={[
+                styles.viewerActionBtn,
+                (viewerIndex === 0 || !displayPhotos[viewerIndex]?.hasLocal) &&
+                  styles.viewerActionBtnDisabled,
+              ]}
+              disabled={viewerIndex === 0 || !displayPhotos[viewerIndex]?.hasLocal}
               onPress={() => makeCover(viewerIndex)}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
@@ -1190,6 +1287,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
   wbBadgeText: { color: colors.text, fontSize: 11, fontWeight: '700' },
+  // "↑ Drive" badge: sits next to the WB badge (right of it) on photos
+  // that have been uploaded to Drive.
+  uploadedBadge: {
+    backgroundColor: 'rgba(37, 99, 235, 0.9)',
+    left: 44,
+  },
+  uploadedBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   gridRemoveBtn: {
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.6)',

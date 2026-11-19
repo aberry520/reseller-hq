@@ -111,6 +111,7 @@ function seedToItem(s: (typeof SEED_ITEMS)[number], now: string): Item {
     createdAt: now,
     ebayCategoryId: '',
     ebayCondition: DEFAULT_EBAY_CONDITION,
+    photoUrls: [],
   };
 }
 
@@ -148,6 +149,11 @@ function webLoad(): void {
     }
     if (it.ebayCondition === undefined) {
       it.ebayCondition = DEFAULT_EBAY_CONDITION;
+      qrFixed = true;
+    }
+    // Photo URLs predate this version — default them on old items.
+    if (it.photoUrls === undefined) {
+      it.photoUrls = [];
       qrFixed = true;
     }
   }
@@ -245,7 +251,8 @@ export function initDb(): void {
       whiteBgPhotos TEXT NOT NULL DEFAULT '[]',
       createdAt TEXT NOT NULL DEFAULT '',
       ebayCategoryId TEXT NOT NULL DEFAULT '',
-      ebayCondition TEXT NOT NULL DEFAULT 'Used - Good'
+      ebayCondition TEXT NOT NULL DEFAULT 'Used - Good',
+      photoUrls TEXT NOT NULL DEFAULT '[]'
     );
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
@@ -299,6 +306,12 @@ export function initDb(): void {
   } catch {
     // Column already exists.
   }
+  // Migration for installs created before photo URLs existed.
+  try {
+    d.execSync(`ALTER TABLE items ADD COLUMN photoUrls TEXT NOT NULL DEFAULT '[]';`);
+  } catch {
+    // Column already exists.
+  }
   const count = d.getFirstSync<{ c: number }>('SELECT COUNT(*) AS c FROM items');
   // Seeding happens once (first run). The '__seeded' marker distinguishes a
   // deliberate clear (empty on purpose — do NOT re-seed) from a first run.
@@ -313,8 +326,8 @@ export function initDb(): void {
         `INSERT INTO items (id, name, purchase, estShip, suggestedPrice, minPrice,
           researchPrice, notes, place, datePurchased, status, dateListed, dateSold,
           soldPrice, fees, shipping, profit, revenue, profitMargin, macBidFees,
-          location, qrCode, photos, whiteBgPhotos, createdAt, ebayCategoryId, ebayCondition)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          location, qrCode, photos, whiteBgPhotos, createdAt, ebayCategoryId, ebayCondition, photoUrls)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           s.id,
           s.name,
@@ -343,6 +356,7 @@ export function initDb(): void {
           now,
           '',
           DEFAULT_EBAY_CONDITION,
+          '[]',
         ],
       );
     }
@@ -390,9 +404,10 @@ export function initDb(): void {
   d.runSync("INSERT OR IGNORE INTO settings (key, value) VALUES ('__seeded', '1')");
 }
 
-type ItemRow = Omit<Item, 'photos' | 'whiteBgPhotos' | 'macBidFees'> & {
+type ItemRow = Omit<Item, 'photos' | 'whiteBgPhotos' | 'photoUrls' | 'macBidFees'> & {
   photos: string;
   whiteBgPhotos: string;
+  photoUrls: string;
   macBidFees: number;
 };
 
@@ -410,6 +425,7 @@ function rowToItem(row: ItemRow): Item {
     // eBay draft fields predate this column on old installs — default them.
     ebayCategoryId: row.ebayCategoryId ?? '',
     ebayCondition: row.ebayCondition ?? DEFAULT_EBAY_CONDITION,
+    photoUrls: safeParse(row.photoUrls),
   };
 }
 
@@ -474,7 +490,7 @@ export function updateItem(id: string, patch: Partial<Item>): void {
       researchPrice=?, notes=?, place=?, datePurchased=?, status=?, dateListed=?,
       dateSold=?, soldPrice=?, fees=?, shipping=?, profit=?, revenue=?,
       profitMargin=?, macBidFees=?, location=?, qrCode=?, photos=?, whiteBgPhotos=?,
-      ebayCategoryId=?, ebayCondition=?
+      ebayCategoryId=?, ebayCondition=?, photoUrls=?
      WHERE id=?`,
     [
       next.name,
@@ -502,6 +518,7 @@ export function updateItem(id: string, patch: Partial<Item>): void {
       JSON.stringify(next.whiteBgPhotos),
       next.ebayCategoryId ?? '',
       next.ebayCondition ?? DEFAULT_EBAY_CONDITION,
+      JSON.stringify(next.photoUrls ?? []),
       id,
     ],
   );
@@ -717,6 +734,7 @@ export function addItem(input: {
     createdAt: new Date().toISOString(),
     ebayCategoryId: '',
     ebayCondition: DEFAULT_EBAY_CONDITION,
+    photoUrls: [],
   };
   if (IS_WEB) {
     webLoad();
@@ -728,8 +746,8 @@ export function addItem(input: {
     `INSERT INTO items (id, name, purchase, estShip, suggestedPrice, minPrice,
       researchPrice, notes, place, datePurchased, status, dateListed, dateSold,
       soldPrice, fees, shipping, profit, revenue, profitMargin, macBidFees,
-      location, qrCode, photos, whiteBgPhotos, createdAt, ebayCategoryId, ebayCondition)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      location, qrCode, photos, whiteBgPhotos, createdAt, ebayCategoryId, ebayCondition, photoUrls)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       item.id,
       item.name,
@@ -758,6 +776,7 @@ export function addItem(input: {
       item.createdAt,
       item.ebayCategoryId,
       item.ebayCondition,
+      '[]',
     ],
   );
   return item;

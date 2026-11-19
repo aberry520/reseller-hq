@@ -31,6 +31,13 @@
 //                  #INFO rows, header row, data below). Rows whose SKU
 //                  (Custom label) already exists are skipped, so sending
 //                  the same item twice does not duplicate the draft.
+//        uploadPhoto { itemId, index, filename, mimeType, data } — save
+//                  one photo (base64) to the "Reseller HQ Photos" Drive
+//                  folder, share it "anyone with the link can view", and
+//                  return { fileId, url }. The app stores the URL on the
+//                  item (Photo URLs column) so the photo is reachable from
+//                  the web version and the posting extension — the local
+//                  file only exists on the phone that took it.
 //
 // Columns are found by HEADER TEXT, not by letter, and the header row is
 // found by scanning the first few rows — so a sheet works as long as it has
@@ -66,7 +73,10 @@ var FIELD_BY_HEADER = {
   'Date Sold': 'dateSold',
   'Sold Price': 'soldPrice',
   'Fees': 'fees',
-  'Shipping': 'shipping'
+  'Shipping': 'shipping',
+  // Hosted photo URLs (JSON array string, one per photo, aligned with the
+  // app's photos list). A sheet without this column simply skips it.
+  'Photo URLs': 'photoUrls'
 };
 // Headers that hold formulas — read but never written by the app. The
 // script fills them in for new rows (see formulaFor_).
@@ -291,7 +301,8 @@ function readInventory_(tabName) {
         dateSold: cols.dateSold ? fmtDate_(r[cols.dateSold - 1]) : '',
         soldPrice: cols.soldPrice ? num_(r[cols.soldPrice - 1]) : 0,
         fees: cols.fees ? num_(r[cols.fees - 1]) : 0,
-        shipping: cols.shipping ? num_(r[cols.shipping - 1]) : 0
+        shipping: cols.shipping ? num_(r[cols.shipping - 1]) : 0,
+        photoUrls: cols.photoUrls ? str_(r[cols.photoUrls - 1]) : ''
       });
     }
   }
@@ -358,6 +369,7 @@ function writeRow_(sheet, row, appId, fields, map) {
   set('soldPrice', num_(fields.soldPrice));
   set('fees', num_(fields.fees));
   set('shipping', num_(fields.shipping));
+  set('photoUrls', fields.photoUrls || '');
   if (cols.appId) sheet.getRange(row, cols.appId).setValue(appId || '');
   // Formula columns, built from the actual column letters.
   for (var kind in formulas) {
@@ -492,6 +504,34 @@ function doPost(e) {
         }
       }
       return json_({ ok: true, written: draftWritten, skipped: draftSkipped, errors: draftErrors });
+    }
+
+    // Save one photo to Drive and return a public link for it. The app
+    // uploads the white-bg version (manually, once it is ready) so the
+    // photo is reachable from the web version and the posting extension.
+    // A re-upload of the same photo replaces the old file, so Drive does
+    // not fill with duplicates.
+    if (action === 'uploadPhoto') {
+      var upItemId = str_(body.itemId).trim();
+      var upIndex = Number(body.index) || 0;
+      var upData = str_(body.data || '').trim();
+      if (!upItemId || !upData) {
+        return json_({ error: 'uploadPhoto needs itemId and data (base64 image).' });
+      }
+      var upName = str_(body.filename || '').trim() || (upItemId + '-' + (upIndex + 1) + '.jpg');
+      var upMime = str_(body.mimeType || '').trim() || 'image/jpeg';
+      var folders = DriveApp.getFoldersByName('Reseller HQ Photos');
+      var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder('Reseller HQ Photos');
+      var existing = folder.getFilesByName(upName);
+      while (existing.hasNext()) existing.next().setTrashed(true);
+      var blob = Utilities.newBlob(Utilities.base64Decode(upData), upMime, upName);
+      var file = folder.createFile(blob);
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      return json_({
+        ok: true,
+        fileId: file.getId(),
+        url: 'https://drive.google.com/uc?export=download&id=' + file.getId()
+      });
     }
 
     var tab = body.tab || SHEET_NAME;

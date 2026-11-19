@@ -29,6 +29,10 @@ export interface SheetRow {
   soldPrice: number;
   fees: number;
   shipping: number;
+  // Hosted photo URLs as a JSON array string (keeps per-photo alignment
+  // with the photos list, including empty slots for not-yet-uploaded
+  // photos). '' = none uploaded.
+  photoUrls: string;
 }
 
 // The input columns — the only fields that ever sync. Photos, the per-item
@@ -50,6 +54,8 @@ export interface SheetFields {
   soldPrice: number;
   fees: number;
   shipping: number;
+  // Hosted photo URLs as a JSON array string (see SheetRow).
+  photoUrls: string;
 }
 
 export interface FieldDiff {
@@ -95,6 +101,7 @@ const FIELD_LABELS: Array<{ key: keyof SheetFields; label: string }> = [
   { key: 'soldPrice', label: 'Sold price' },
   { key: 'fees', label: 'Fees' },
   { key: 'shipping', label: 'Shipping' },
+  { key: 'photoUrls', label: 'Photo URLs' },
 ];
 
 const MONEY_KEYS: Array<keyof SheetFields> = [
@@ -138,7 +145,24 @@ export function itemToSheetFields(item: Item): SheetFields {
     soldPrice: item.soldPrice,
     fees: item.fees,
     shipping: item.shipping,
+    // JSON array string — keeps empty slots, so the URLs stay aligned
+    // with the photos list by index.
+    photoUrls: JSON.stringify(item.photoUrls ?? []),
   };
+}
+
+// Parse a sheet "Photo URLs" cell back into the per-photo array. Tolerates
+// a blank cell (no uploads yet) and a legacy newline-joined list.
+export function parsePhotoUrls(v: string): string[] {
+  const s = (v || '').trim();
+  if (!s) return [];
+  try {
+    const parsed = JSON.parse(s);
+    if (Array.isArray(parsed)) return parsed.map((u) => String(u || ''));
+  } catch {
+    // Not JSON — fall back to a newline-joined list.
+  }
+  return s.split('\n').map((u) => u.trim()).filter(Boolean);
 }
 
 // The app-side patch for a sheet row: the 13 fields plus the app's own
@@ -182,6 +206,7 @@ export function sheetRowToPatch(
     soldPrice: sheet.soldPrice,
     fees: sheet.fees,
     shipping: sheet.shipping,
+    photoUrls: parsePhotoUrls(sheet.photoUrls),
     suggestedPrice: suggested,
     minPrice: min,
     profit,
@@ -217,6 +242,16 @@ function fieldDiffs(item: Item, sheet: SheetRow): FieldDiff[] {
       same = normalizeName(String(a)) === normalizeName(String(b));
       appStr = String(a || '—');
       sheetStr = String(b || '—');
+    } else if (key === 'photoUrls') {
+      // Show counts, not the raw URLs — the JSON is long and the count is
+      // what matters ("2 uploaded" vs "0 uploaded").
+      const aUrls = parsePhotoUrls(String(a || ''));
+      const bUrls = parsePhotoUrls(String(b || ''));
+      same = JSON.stringify(aUrls) === JSON.stringify(bUrls);
+      const aN = aUrls.filter(Boolean).length;
+      const bN = bUrls.filter(Boolean).length;
+      appStr = `${aN} uploaded`;
+      sheetStr = `${bN} uploaded`;
     } else if (key === 'status') {
       same = normaliseStatus(String(a)) === normaliseStatus(String(b));
       appStr = normaliseStatus(String(a));

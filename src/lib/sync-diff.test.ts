@@ -7,8 +7,11 @@ import {
   buildPlan,
   computeDiff,
   defaultCheckedKeys,
+  itemToSheetFields,
   normalizeName,
+  parsePhotoUrls,
   planPreview,
+  sheetRowToPatch,
   SheetRow,
 } from './sync-diff';
 import { DEFAULT_SETTINGS, idFromQr, Item } from './types';
@@ -52,6 +55,7 @@ function makeItem(over: Partial<Item> = {}): Item {
     createdAt: '2026-11-17T00:00:00.000Z',
     ebayCategoryId: '',
     ebayCondition: 'Used - Good',
+    photoUrls: [],
     ...over,
   };
 }
@@ -74,6 +78,7 @@ function makeRow(over: Partial<SheetRow> = {}): SheetRow {
     soldPrice: 0,
     fees: 0,
     shipping: 0,
+    photoUrls: '',
     ...over,
   };
 }
@@ -339,6 +344,7 @@ const draftItem = makeItem({
   suggestedPrice: 44.99,
   ebayCategoryId: '21139',
   ebayCondition: 'New',
+  photoUrls: [],
 });
 const draftRow = ebayDraftRow(draftItem);
 check(
@@ -374,6 +380,45 @@ check(
   mowerHits.every((c) => c.id !== '' && c.path !== '') &&
     ebayCategoryById('260921')?.name === 'Lawn Mowers' &&
     ebayCategoryById('999999999') === null,
+);
+
+// 17. Photo URLs: the sheet cell holds a JSON array string (keeps empty
+// slots so URLs stay aligned with photos by index), and the merge preview
+// shows counts, not raw URLs.
+check(
+  'parsePhotoUrls round-trips a JSON array with empty slots',
+  JSON.stringify(parsePhotoUrls('["https://a","","https://b"]')) ===
+    JSON.stringify(['https://a', '', 'https://b']),
+);
+check(
+  'parsePhotoUrls tolerates a blank cell and a newline-joined list',
+  parsePhotoUrls('').length === 0 &&
+    parsePhotoUrls('https://a\nhttps://b').length === 2,
+);
+const photoItem = makeItem({
+  photoUrls: ['https://drive.google.com/uc?id=1', ''],
+});
+const photoFields = itemToSheetFields(photoItem);
+check(
+  'itemToSheetFields writes photoUrls as a JSON array string',
+  photoFields.photoUrls === '["https://drive.google.com/uc?id=1",""]',
+);
+check(
+  'sheetRowToPatch reads photoUrls back into the array',
+  JSON.stringify(sheetRowToPatch(makeRow({ photoUrls: photoFields.photoUrls }), null, DEFAULT_SETTINGS).photoUrls) ===
+    JSON.stringify(['https://drive.google.com/uc?id=1', '']),
+);
+const photoDiff = computeDiff(
+  [photoItem],
+  [makeRow({ photoUrls: '[]' })],
+  { tombstones: [], syncedIds: [] },
+);
+check(
+  'photo URL upload shows in the merge preview as a count, not raw URLs',
+  photoDiff.changed.length === 1 &&
+    photoDiff.changed[0].diffs.some(
+      (d) => d.field === 'Photo URLs' && d.app === '1 uploaded' && d.sheet === '0 uploaded',
+    ),
 );
 
 if (failures > 0) throw new Error(`${failures} sync-diff check(s) failed`);
