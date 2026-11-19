@@ -37,6 +37,9 @@ import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 import { appliesMacBidFees, DEFAULT_EBAY_CONDITION, EBAY_CONDITIONS } from '../../src/lib/types';
 import type { Item } from '../../src/lib/types';
 import CategoryPicker from '../../src/components/CategoryPicker';
+import Dropdown from '../../src/components/Dropdown';
+import InfoButton from '../../src/components/InfoButton';
+import { Ionicons } from '@expo/vector-icons';
 import { ebayCategoryById } from '../../src/lib/ebay-categories';
 import type { EbayCategory } from '../../src/lib/ebay-categories';
 
@@ -89,6 +92,9 @@ export default function ItemScreen() {
   const [ebayCondition, setEbayCondition] = useState(DEFAULT_EBAY_CONDITION);
   const [detailsNote, setDetailsNote] = useState('');
   const [catPickerVisible, setCatPickerVisible] = useState(false);
+  // Details card is collapsible and starts collapsed — the calculator
+  // and photos are the everyday flow; details are occasional edits.
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const ebayCategory = ebayCategoryById(ebayCategoryId.trim());
   // Full-screen photo viewer: index into item.photos, null = closed.
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
@@ -675,7 +681,17 @@ export default function ItemScreen() {
       </Text>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>{isSold ? 'Sale' : 'Price calculator'}</Text>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardHeaderTitle}>{isSold ? 'Sale' : 'Price calculator'}</Text>
+          <InfoButton
+            title={isSold ? 'About this sale' : 'About the price calculator'}
+            message={
+              isSold
+                ? 'Revenue is what the sale brought in after fees and shipping (sold price − fees − shipping). Profit is revenue minus your all-in cost, and margin is profit as a share of the sold price. Tap Edit sale to change the sold price, fees, shipping, or date.'
+                : 'Type a cost and an estimated shipping amount and the prices update as you type — they save automatically when you leave a field. Suggested eBay price targets a 30% margin after the 13.6% eBay fee; Min eBay price is break-even on margin; the Facebook price is the suggested price minus shipping and fees, rounded up to the nearest $5. If the item came from MAC.BID, turn on the MAC.BID switch and enter the bid — the all-in cost is (bid × 1.15 + $3) × 1.07.'
+            }
+          />
+        </View>
         {isSold ? (
           <>
             <View style={styles.hero}>
@@ -742,11 +758,6 @@ export default function ItemScreen() {
                 }}
               />
             </View>
-            <Text style={styles.note}>
-              {applyMacBid
-                ? 'On: cost = (bid × 1.15 + $3) × 1.07.'
-                : 'Off: the cost you enter is the total cost of goods, no fees or tax added.'}
-            </Text>
             <View style={styles.moneyGrid}>
               <View style={styles.moneyField}>
                 <Text style={styles.fieldLabel}>
@@ -806,10 +817,6 @@ export default function ItemScreen() {
                 <Text style={styles.tileValue}>{(marginAtSuggested * 100).toFixed(1)}%</Text>
               </View>
             </View>
-            <Text style={styles.note}>
-              Predictions update as you type and save automatically — cost and estimated
-              shipping are the only inputs.
-            </Text>
             <Pressable
               style={StyleSheet.flatten([styles.btn, styles.soldBtn])}
               onPress={openSoldModal}
@@ -821,8 +828,15 @@ export default function ItemScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Photos ({displayPhotos.length})</Text>
-        <Text style={styles.note}>Photos are cropped square (1:1) for eBay — adjust the crop when you take one. Take all your photos first, then remove backgrounds for all of them at once. Tap a photo to open it, swipe between photos, and crop or whiten it there.</Text>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardHeaderTitle}>Photos ({displayPhotos.length})</Text>
+          <InfoButton
+            title="About photos"
+            message={
+              'Photos are cropped square (1:1) for eBay — adjust the crop when you take one. Take all your photos first, then remove backgrounds for all of them at once. Tap a photo to open it full-screen: swipe between photos, whiten the background, make it the cover, replace the original with the white-bg version, or delete it there.\n\nPhotos upload to Google Drive automatically — the white-bg version when there is one — so they show in the web version and the posting extension can use them. If an upload fails, a Retry button appears in this card.'
+            }
+          />
+        </View>
         {displayPhotos.length === 0 && <Text style={styles.line}>No photos yet.</Text>}
         <View style={styles.photoGrid}>
           {displayPhotos.map((p, i) => (
@@ -896,110 +910,110 @@ export default function ItemScreen() {
           <Text style={styles.note}>✓ All photos uploaded to Drive.</Text>
         ) : null}
         {uploadNote !== '' && <Text style={styles.note}>{uploadNote}</Text>}
-        <Text style={styles.note}>Photos upload to Google Drive automatically — the white-bg version when there is one — so they show in the web version and the posting extension can use them. If an upload fails, a Retry button appears here.</Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Details</Text>
-        <Text style={styles.label}>Status</Text>
-        <View style={styles.statusRow}>
-          {ALL_STATUSES.filter((s) => s !== 'Sold').map((s) => (
-            <Pressable
-              key={s}
-              style={[styles.statusChip, item.status === s && styles.statusChipActive]}
-              onPress={() => changeStatus(s)}
-              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-            >
-              <Text
-                style={[styles.statusChipText, item.status === s && styles.statusChipTextActive]}
-              >
-                {s}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        {isSold && (
-          <Text style={styles.note}>
-            Sold — edit the sale in the Sale card above, or pick another status here to move it
-            back.
-          </Text>
-        )}
-        {(item.dateListed !== '' || item.dateSold !== '') && (
-          <Text style={styles.note}>
-            {item.dateListed !== '' ? `Listed ${item.dateListed}` : ''}
-            {item.dateListed !== '' && item.dateSold !== '' ? ' · ' : ''}
-            {item.dateSold !== '' ? `Sold ${item.dateSold}` : ''}
-          </Text>
-        )}
-        {statusNote !== '' && <Text style={[styles.note, styles.pass]}>{statusNote}</Text>}
-        <Text style={styles.label}>Location</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Shelf, bin, garage…"
-          value={location}
-          onChangeText={setLocation}
-          returnKeyType="done"
-        />
-        {item.notes ? <Text style={styles.line}>Notes: {item.notes}</Text> : null}
-        <Text style={styles.label}>eBay category</Text>
         <Pressable
-          style={styles.catPick}
-          onPress={() => setCatPickerVisible(true)}
-          hitSlop={{ top: 4, bottom: 4 }}
+          style={styles.cardHeader}
+          onPress={() => setDetailsOpen((o) => !o)}
+          hitSlop={{ top: 6, bottom: 6 }}
         >
-          <Text style={styles.catPickText} numberOfLines={2}>
-            {ebayCategory ? ebayCategory.path : ebayCategoryId.trim() !== '' ? `ID ${ebayCategoryId.trim()} (not in the 2026 tree)` : 'Tap to search eBay categories'}
-          </Text>
-          <Text style={styles.catPickId}>
-            {ebayCategory ? `ID ${ebayCategory.id}` : ebayCategoryId.trim() !== '' ? 'Tap to search, or type an ID below' : 'Search by keyword, e.g. lawn mower'}
-          </Text>
+          <Text style={styles.cardHeaderTitle}>Details</Text>
+          <Ionicons
+            name={detailsOpen ? 'chevron-up' : 'chevron-down'}
+            size={20}
+            color={colors.muted}
+          />
         </Pressable>
-        <TextInput
-          style={styles.input}
-          placeholder="Or type a category ID directly"
-          placeholderTextColor={colors.muted}
-          value={ebayCategoryId}
-          onChangeText={(v) => setEbayCategoryId(v.replace(/[^0-9]/g, ''))}
-          keyboardType="number-pad"
-          returnKeyType="done"
-        />
-        <CategoryPicker
-          visible={catPickerVisible}
-          initialQuery={cleanName(item.name)}
-          onSelect={(cat: EbayCategory) => setEbayCategoryId(cat.id)}
-          onClose={() => setCatPickerVisible(false)}
-        />
-        <Text style={styles.label}>eBay condition</Text>
-        <View style={styles.statusRow}>
-          {EBAY_CONDITIONS.map((c) => (
-            <Pressable
-              key={c}
-              style={[styles.statusChip, ebayCondition === c && styles.statusChipActive]}
-              onPress={() => setEbayCondition(c)}
-              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-            >
-              <Text
-                style={[styles.statusChipText, ebayCondition === c && styles.statusChipTextActive]}
-              >
-                {c}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <Pressable style={styles.btn} onPress={saveDetails}>
-          <Text style={styles.btnText}>Save details</Text>
-        </Pressable>
-        {detailsNote !== '' && <Text style={[styles.note, styles.pass]}>{detailsNote}</Text>}
-        {ebayCategoryId.trim() === '' && (
+        {!detailsOpen && (
           <Text style={styles.note}>
-            Set a category before sending this item to eBay drafts — eBay requires one.
+            {item.status}
+            {item.location ? ` · ${item.location}` : ''}
+            {item.dateListed ? ` · listed ${item.dateListed}` : ''}
+            {item.dateSold ? ` · sold ${item.dateSold}` : ''}
           </Text>
         )}
-        {item.status === 'Deleted' && (
-          <Text style={styles.note}>
-            This item is deleted — it is hidden from the list and kept in the sheet. Tap Restore
-            below (or any status above) to bring it back.
-          </Text>
+        {detailsOpen && (
+          <>
+            <Text style={styles.label}>Status</Text>
+            <Dropdown
+              value={item.status}
+              options={ALL_STATUSES.filter((s) => s !== 'Sold')}
+              onSelect={(v) => changeStatus(v as Item['status'])}
+            />
+            {isSold && (
+              <Text style={styles.note}>
+                Sold — edit the sale in the Sale card above, or pick another status here to move
+                it back.
+              </Text>
+            )}
+            {(item.dateListed !== '' || item.dateSold !== '') && (
+              <Text style={styles.note}>
+                {item.dateListed !== '' ? `Listed ${item.dateListed}` : ''}
+                {item.dateListed !== '' && item.dateSold !== '' ? ' · ' : ''}
+                {item.dateSold !== '' ? `Sold ${item.dateSold}` : ''}
+              </Text>
+            )}
+            {statusNote !== '' && <Text style={[styles.note, styles.pass]}>{statusNote}</Text>}
+            <Text style={styles.label}>Location</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Shelf, bin, garage…"
+              value={location}
+              onChangeText={setLocation}
+              returnKeyType="done"
+            />
+            {item.notes ? <Text style={styles.line}>Notes: {item.notes}</Text> : null}
+            <Text style={styles.label}>eBay category</Text>
+            <Pressable
+              style={styles.catPick}
+              onPress={() => setCatPickerVisible(true)}
+              hitSlop={{ top: 4, bottom: 4 }}
+            >
+              <Text style={styles.catPickText} numberOfLines={2}>
+                {ebayCategory ? ebayCategory.path : ebayCategoryId.trim() !== '' ? `ID ${ebayCategoryId.trim()} (not in the 2026 tree)` : 'Tap to search eBay categories'}
+              </Text>
+              <Text style={styles.catPickId}>
+                {ebayCategory ? `ID ${ebayCategory.id}` : ebayCategoryId.trim() !== '' ? 'Tap to search, or type an ID below' : 'Search by keyword, e.g. lawn mower'}
+              </Text>
+            </Pressable>
+            <TextInput
+              style={styles.input}
+              placeholder="Or type a category ID directly"
+              placeholderTextColor={colors.muted}
+              value={ebayCategoryId}
+              onChangeText={(v) => setEbayCategoryId(v.replace(/[^0-9]/g, ''))}
+              keyboardType="number-pad"
+              returnKeyType="done"
+            />
+            <CategoryPicker
+              visible={catPickerVisible}
+              initialQuery={cleanName(item.name)}
+              onSelect={(cat: EbayCategory) => setEbayCategoryId(cat.id)}
+              onClose={() => setCatPickerVisible(false)}
+            />
+            <Text style={styles.label}>eBay condition</Text>
+            <Dropdown
+              value={ebayCondition}
+              options={[...EBAY_CONDITIONS]}
+              onSelect={setEbayCondition}
+            />
+            <Pressable style={styles.btn} onPress={saveDetails}>
+              <Text style={styles.btnText}>Save details</Text>
+            </Pressable>
+            {detailsNote !== '' && <Text style={[styles.note, styles.pass]}>{detailsNote}</Text>}
+            {ebayCategoryId.trim() === '' && (
+              <Text style={styles.note}>
+                Set a category before sending this item to eBay drafts — eBay requires one.
+              </Text>
+            )}
+            {item.status === 'Deleted' && (
+              <Text style={styles.note}>
+                This item is deleted — it is hidden from the list and kept in the sheet. Tap
+                Restore below (or any status above) to bring it back.
+              </Text>
+            )}
+          </>
         )}
       </View>
 
@@ -1248,6 +1262,13 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: spacing.sm },
+  cardHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  cardHeaderTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   label: { color: colors.muted, fontSize: 14, fontWeight: '600', marginBottom: 4, marginTop: spacing.sm },
   catPick: {
     backgroundColor: colors.card,
@@ -1300,20 +1321,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   switchLabel: { color: colors.text, flex: 1, fontSize: 15, marginRight: spacing.md },
-  statusRow: { flexDirection: 'row', flexWrap: 'wrap' },
-  statusChip: {
-    alignItems: 'center',
-    backgroundColor: colors.chip,
-    borderRadius: 999,
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-    marginTop: spacing.sm,
-    minHeight: minTouchHeight,
-    paddingHorizontal: 16,
-  },
-  statusChipActive: { backgroundColor: colors.primary },
-  statusChipText: { color: colors.text, fontSize: 15, fontWeight: '600' },
-  statusChipTextActive: { color: '#fff' },
   content: { paddingHorizontal: spacing.lg },
   fail: { color: colors.danger, fontWeight: '700' },
   input: {
