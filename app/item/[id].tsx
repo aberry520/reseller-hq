@@ -129,6 +129,34 @@ export default function ItemScreen() {
 
   useFocusEffect(refresh);
 
+  // Photos to display: one entry per index up to the longer of the local
+  // photos and the hosted URLs. Prefers the white-bg local file (fast,
+  // works offline on the phone), then the Drive URL (the only copy the
+  // web version has — local files only exist on the phone that took
+  // them), then the original local file. `uploaded` = this photo has a
+  // Drive URL; `hasLocal` = a local file exists (needed for White-bg /
+  // Make cover / Remove, which all work on the local file).
+  // NOTE: this hook must live BEFORE the `if (!item)` early return below.
+  // Hooks run in order every render; a hook after an early return is
+  // skipped on the render where item is still null (first load) and runs
+  // on the next one — React then throws "Rendered more hooks than during
+  // the previous render" and the item screen crashes.
+  const displayPhotos = useMemo(() => {
+    if (!item) return [] as { uri: string; uploaded: boolean; hasLocal: boolean }[];
+    const urls = item.photoUrls ?? [];
+    const wb = alignWhiteBg(item.photos, item.whiteBgPhotos);
+    const n = Math.max(item.photos.length, urls.length);
+    const out: { uri: string; uploaded: boolean; hasLocal: boolean }[] = [];
+    for (let i = 0; i < n; i++) {
+      out.push({
+        uri: wb[i] || urls[i] || item.photos[i] || '',
+        uploaded: !!urls[i],
+        hasLocal: !!item.photos[i],
+      });
+    }
+    return out;
+  }, [item]);
+
   if (!item) {
     return (
       <View style={[styles.container, styles.notFound, { paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.lg }]}>
@@ -301,28 +329,6 @@ export default function ItemScreen() {
     }
     setTimeout(() => setUploadNote(''), 5000);
   };
-
-  // Photos to display: one entry per index up to the longer of the local
-  // photos and the hosted URLs. Prefers the white-bg local file (fast,
-  // works offline on the phone), then the Drive URL (the only copy the
-  // web version has — local files only exist on the phone that took
-  // them), then the original local file. `uploaded` = this photo has a
-  // Drive URL; `hasLocal` = a local file exists (needed for White-bg /
-  // Make cover / Remove, which all work on the local file).
-  const displayPhotos = useMemo(() => {
-    const urls = item.photoUrls ?? [];
-    const wb = alignWhiteBg(item.photos, item.whiteBgPhotos);
-    const n = Math.max(item.photos.length, urls.length);
-    const out: { uri: string; uploaded: boolean; hasLocal: boolean }[] = [];
-    for (let i = 0; i < n; i++) {
-      out.push({
-        uri: wb[i] || urls[i] || item.photos[i] || '',
-        uploaded: !!urls[i],
-        hasLocal: !!item.photos[i],
-      });
-    }
-    return out;
-  }, [item.photos, item.whiteBgPhotos, item.photoUrls]);
 
   const removePhoto = (uri: string) => {
     Alert.alert('Remove photo?', 'This removes the photo from this item.', [
