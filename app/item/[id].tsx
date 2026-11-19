@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
-import { pushItemsToSheetLive, uploadItemPhotos } from '../../src/lib/sync';
+import { deletePhotoFromDrive, isSyncConfigured, pushItemsToSheetLive, uploadItemPhotos } from '../../src/lib/sync';
 import { cleanName, photoUriAt } from '../../src/lib/listing';
 import {
   ebayMargin,
@@ -129,6 +129,54 @@ export default function ItemScreen() {
 
   useFocusEffect(refresh);
 
+  // Automatic photo upload to Drive. Photos upload on their own — when
+  // one is added, after background removal, when a white-bg version
+  // replaces the original, and as a catch-up when the item is opened —
+  // so there is no Upload button to remember. If an attempt fails, the
+  // affected photos keep no URL and the Retry button (shown while any
+  // photo lacks a URL) runs this again. Silent when sync is not set up.
+  const uploadingRef = useRef(false);
+  const autoUpload = async (target: Item, forceIndices?: number[]) => {
+    if (uploadingRef.current) return;
+    if (!isSyncConfigured()) return;
+    if (target.photos.length === 0) return;
+    const urls = target.photoUrls ?? [];
+    const hasWork =
+      target.photos.some((_, i) => !urls[i]) || (forceIndices?.length ?? 0) > 0;
+    if (!hasWork) return;
+    uploadingRef.current = true;
+    setUploading(true);
+    try {
+      const res = await uploadItemPhotos(target, { forceIndices });
+      if (res.errors.length > 0) {
+        setUploadNote(
+          `Upload failed for ${res.errors.length} photo${res.errors.length === 1 ? '' : 's'} — tap Retry upload.`,
+        );
+      } else if (res.uploaded > 0) {
+        setUploadNote(`✓ Uploaded ${res.uploaded} photo${res.uploaded === 1 ? '' : 's'} to Drive.`);
+        refresh();
+      }
+    } catch {
+      setUploadNote('Upload failed — tap Retry upload.');
+    } finally {
+      uploadingRef.current = false;
+      setUploading(false);
+    }
+  };
+
+  // Catch-up on open: when a different item is opened and some of its
+  // photos have no Drive URL yet (added in a past session, or an upload
+  // that failed last time), upload them now. Keyed on the item id only,
+  // so it runs once per item opened, not on every photo change.
+  useEffect(() => {
+    if (!item) return;
+    const urls = item.photoUrls ?? [];
+    if (item.photos.length > 0 && item.photos.some((_, i) => !urls[i])) {
+      void autoUpload(item);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item?.id]);
+
   // Photos to display: one entry per index up to the longer of the local
   // photos and the hosted URLs. Prefers the white-bg local file (fast,
   // works offline on the phone), then the Drive URL (the only copy the
@@ -171,6 +219,9 @@ export default function ItemScreen() {
   // everything comes from MAC.BID, so each item decides for itself.
   const applyMacBid = appliesMacBidFees(item);
   const allIn = applyMacBid ? macBidAllIn(item.purchase) : item.purchase;
+  // Photos with a local file but no Drive URL yet — these are what the
+  // automatic upload still owes (never uploaded, or an attempt failed).
+  const pendingUploads = item.photos.filter((_, i) => !(item.photoUrls ?? [])[i]).length;
   const minEbay = minEbayPrice(allIn, item.estShip, settings.ebayFeePct, settings.targetMarginPct);
   const suggested = suggestedEbayPrice(
     allIn,
@@ -245,6 +296,8 @@ export default function ItemScreen() {
     };
     updateItem(item.id, next);
     setItem(next);
+    // Upload the new photo to Drive automatically.
+    void autoUpload(next);
   };
 
   // Batch background removal: send every photo that does not yet have a
@@ -277,12 +330,14 @@ export default function ItemScreen() {
     setBusy(true);
     let done = 0;
     let failed = 0;
+    const doneIndices: number[] = [];
     for (const [n, { uri, i }] of pending.entries()) {
       setBgNote(`Removing background… ${n + 1} of ${pending.length}`);
       const bg = await removeBackground(uri, settings.bgRemoverUrl);
       if (bg.ok) {
         aligned[i] = bg.uri;
         done += 1;
+        doneIndices.push(i);
         const next = { ...item, whiteBgPhotos: [...aligned] };
         updateItem(item.id, next);
         setItem(next);
@@ -297,36 +352,12 @@ export default function ItemScreen() {
         : `Removed ${done}, failed ${failed}. Check the server and try again.`,
     );
     setTimeout(() => setBgNote(''), 4000);
-  };
-
-  // Manual photo upload to Drive: only photos without a URL yet go up
-  // (upload once the white-bg version is ready). The URLs land on the
-  // item and in the sheet's Photo URLs column, so the photos are
-  // reachable from the web version and the posting extension.
-  const uploadPhotos = async () => {
-    if (uploading) return;
-    if (item.photos.length === 0 && (item.photoUrls ?? []).filter(Boolean).length === 0) {
-      setUploadNote('No photos yet.');
-      setTimeout(() => setUploadNote(''), 3000);
-      return;
+    // Upload the new white-bg versions to Drive (re-uploading any photo
+    // that was already up, so Drive holds the white-bg version).
+    if (doneIndices.length > 0) {
+      const latest = getItem(item.id);
+      if (latest) void autoUpload(latest, doneIndices);
     }
-    setUploading(true);
-    setUploadNote('Uploading photos…');
-    const res = await uploadItemPhotos(item);
-    setUploading(false);
-    if (res.errors.length > 0) {
-      setUploadNote(`Uploaded ${res.uploaded}, ${res.errors.length} failed: ${res.errors[0]}`);
-    } else if (res.uploaded === 0) {
-      setUploadNote(
-        res.already > 0
-          ? 'All photos are already uploaded.'
-          : 'Nothing to upload — add photos first.',
-      );
-    } else {
-      setUploadNote(`✓ Uploaded ${res.uploaded} photo${res.uploaded === 1 ? '' : 's'} to Drive.`);
-      refresh();
-    }
-    setTimeout(() => setUploadNote(''), 5000);
   };
 
   const removePhoto = (uri: string) => {
@@ -349,15 +380,23 @@ export default function ItemScreen() {
           }
           if (photos.length === 0) whiteBgPhotos = [];
           // Photo URLs line up with photos by index too — drop the URL for
-          // the removed photo so the remaining URLs stay aligned.
+          // the removed photo so the remaining URLs stay aligned. Capture
+          // the removed URL first so its Drive file can be deleted too.
           let photoUrls = item.photoUrls ?? [];
+          let removedUrl = '';
           if (idx >= 0 && item.photos.length === photoUrls.length) {
+            removedUrl = photoUrls[idx] ?? '';
             photoUrls = photoUrls.filter((_, i) => i !== idx);
           }
           if (photos.length === 0) photoUrls = [];
           const next = { ...item, photos, whiteBgPhotos, photoUrls };
           updateItem(item.id, next);
           setItem(next);
+          // Keep the sheet and Drive in step: push the item so the sheet's
+          // Photo URLs drops the removed URL, and delete the Drive file so
+          // it does not linger as an orphan.
+          pushItemsToSheetLive([next]);
+          if (removedUrl) void deletePhotoFromDrive(removedUrl);
         },
       },
     ]);
@@ -377,6 +416,40 @@ export default function ItemScreen() {
     setItem(next);
     setBgNote('Swapped to the white-background version.');
     setTimeout(() => setBgNote(''), 3000);
+  };
+
+  // Save the white-bg version AS the photo, replacing (discarding) the
+  // original. Offered when a white-bg version exists for the photo.
+  // Unlike swap, this is one-way: afterwards the photo IS the white-bg
+  // image and there is no separate version to swap back to. The photo
+  // is then re-uploaded so Drive holds the white-bg version as well.
+  const replaceOriginalWithBg = (index: number) => {
+    const bgUri = alignWhiteBg(item.photos, item.whiteBgPhotos)[index];
+    if (!bgUri) return;
+    Alert.alert(
+      'Replace original photo?',
+      'The white-background version becomes the photo and the original is discarded. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Replace',
+          style: 'destructive',
+          onPress: () => {
+            const photos = [...item.photos];
+            photos[index] = bgUri;
+            const whiteBgPhotos = alignWhiteBg(item.photos, item.whiteBgPhotos);
+            whiteBgPhotos[index] = '';
+            const next = { ...item, photos, whiteBgPhotos };
+            updateItem(item.id, next);
+            setItem(next);
+            setBgNote('White-background version saved as the photo.');
+            setTimeout(() => setBgNote(''), 3000);
+            // Re-upload so Drive holds this version as the photo.
+            void autoUpload(next, [index]);
+          },
+        },
+      ],
+    );
   };
 
   // White-background button in the viewer: if this photo has no white-bg
@@ -407,6 +480,9 @@ export default function ItemScreen() {
     updateItem(item.id, withBg);
     setItem(withBg);
     swapPhotoBg(index);
+    // Upload the new white-bg version to Drive.
+    const latest = getItem(item.id);
+    if (latest) void autoUpload(latest, [index]);
   };
 
   // Make the photo in the viewer the cover (first photo). Its white-bg
@@ -840,20 +916,23 @@ export default function ItemScreen() {
             </Text>
           </Pressable>
         )}
-        {displayPhotos.length > 0 && (
+        {uploading ? (
+          <Text style={styles.note}>Uploading photos to Drive…</Text>
+        ) : pendingUploads > 0 ? (
           <Pressable
-            style={[styles.btn, styles.bigBtn, uploading && styles.btnDisabled]}
-            disabled={uploading}
-            onPress={() => void uploadPhotos()}
+            style={[styles.btn, styles.bigBtn]}
+            onPress={() => void autoUpload(item)}
             hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
           >
             <Text style={styles.btnText}>
-              {uploading ? 'Uploading photos…' : 'Upload photos to Drive'}
+              Retry upload ({pendingUploads} photo{pendingUploads === 1 ? '' : 's'})
             </Text>
           </Pressable>
-        )}
+        ) : item.photos.length > 0 ? (
+          <Text style={styles.note}>✓ All photos uploaded to Drive.</Text>
+        ) : null}
         {uploadNote !== '' && <Text style={styles.note}>{uploadNote}</Text>}
-        <Text style={styles.note}>Uploading saves the white-bg photos to Google Drive so you can see them in the web version and the posting extension can use them. Only photos without a Drive link yet are uploaded.</Text>
+        <Text style={styles.note}>Photos upload to Google Drive automatically — the white-bg version when there is one — so they show in the web version and the posting extension can use them. If an upload fails, a Retry button appears here.</Text>
       </View>
 
       <View style={styles.card}>
@@ -1063,6 +1142,19 @@ export default function ItemScreen() {
             >
               <Text style={styles.viewerActionText}>Make cover</Text>
             </Pressable>
+            {alignWhiteBg(item.photos, item.whiteBgPhotos)[viewerIndex] ? (
+              <Pressable
+                style={[
+                  styles.viewerActionBtn,
+                  !displayPhotos[viewerIndex]?.hasLocal && styles.viewerActionBtnDisabled,
+                ]}
+                disabled={!displayPhotos[viewerIndex]?.hasLocal}
+                onPress={() => replaceOriginalWithBg(viewerIndex)}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Text style={styles.viewerActionText}>Replace original</Text>
+              </Pressable>
+            ) : null}
             <Pressable
               style={[styles.viewerActionBtn, styles.viewerDoneBtn]}
               onPress={() => setViewerIndex(null)}

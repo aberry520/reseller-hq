@@ -38,6 +38,8 @@
 //                  item (Photo URLs column) so the photo is reachable from
 //                  the web version and the posting extension — the local
 //                  file only exists on the phone that took it.
+//        deletePhoto { fileId } — trash a photo in Drive (the app
+//                  removed it from an item), so Drive keeps no orphans.
 //
 // Columns are found by HEADER TEXT, not by letter, and the header row is
 // found by scanning the first few rows — so a sheet works as long as it has
@@ -533,6 +535,22 @@ function doPost(e) {
         fileId: file.getId(),
         url: 'https://drive.google.com/uc?export=view&id=' + file.getId()
       });
+    }
+
+    // Delete a photo from Drive (the app removed it from an item), so
+    // Drive does not keep orphaned files. Trashing is enough — the file
+    // leaves the folder and stops being reachable at its URL.
+    if (action === 'deletePhoto') {
+      var delId = str_(body.fileId).trim();
+      if (!delId) {
+        return json_({ error: 'deletePhoto needs fileId.' });
+      }
+      try {
+        DriveApp.getFileById(delId).setTrashed(true);
+      } catch (e) {
+        // Already gone — the goal (not in Drive) is met.
+      }
+      return json_({ ok: true });
     }
 
     var tab = body.tab || SHEET_NAME;

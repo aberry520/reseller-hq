@@ -45,6 +45,14 @@ function syncConfig(): { url: string; token: string; tab: string } {
   };
 }
 
+// Whether sheet sync is set up at all (URL + token present). Automatic
+// photo upload checks this first so it stays silent for a user who has
+// not connected a sheet yet, instead of failing on every photo.
+export function isSyncConfigured(): boolean {
+  const { syncUrl, syncToken } = getSettings();
+  return !!syncUrl.trim() && !!syncToken.trim();
+}
+
 export async function fetchSheetRows(): Promise<SheetRow[]> {
   const { url, token, tab } = syncConfig();
   const res = await fetch(`${url}?token=${encodeURIComponent(token)}&tab=${encodeURIComponent(tab)}`);
@@ -342,29 +350,38 @@ async function readPhotoBase64(uri: string): Promise<string> {
   return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
 }
 
-// Upload an item's photos to Google Drive (manual, from the item screen).
-// Only photos that do not have a URL yet are uploaded — upload once the
-// white-bg version is ready. Each photo goes up as the white-bg version
-// when one exists, otherwise the original. The Apps Script saves it to
-// the "Reseller HQ Photos" folder, shares it "anyone with the link", and
-// returns a public URL, which is stored on the item (photoUrls, aligned
-// by index with photos) and pushed to the sheet's Photo URLs column right
-// away, so the photo is reachable from the web version and the posting
-// extension — the local file only exists on the phone that took it.
-// Returns how many were uploaded, how many were already up, and any
-// per-photo errors. A re-edited photo (new white-bg version) is NOT
-// re-uploaded by this — its URL still points at the old upload.
-export async function uploadItemPhotos(item: Item): Promise<{
+// Upload an item's photos to Google Drive. Runs automatically from the
+// item screen (on photo add, after background removal, when a white-bg
+// version replaces the original, and as a catch-up when the item is
+// opened), and from the Retry button when an automatic attempt failed.
+// By default only photos that do not have a URL yet are uploaded.
+// `forceIndices` re-uploads specific photos even when they already have
+// a URL — used when a photo's hosted version is stale, e.g. a white-bg
+// version was created (or saved over the original) after the first
+// upload, so Drive should hold the new version instead. Each photo goes
+// up as the white-bg version when one exists, otherwise the original.
+// The Apps Script saves it to the "Reseller HQ Photos" folder, shares
+// it "anyone with the link", and returns a public URL, which is stored
+// on the item (photoUrls, aligned by index with photos) and pushed to
+// the sheet's Photo URLs column right away, so the photo is reachable
+// from the web version and the posting extension — the local file only
+// exists on the phone that took it. Returns how many were uploaded, how
+// many were already up, and any per-photo errors.
+export async function uploadItemPhotos(
+  item: Item,
+  opts?: { forceIndices?: number[] },
+): Promise<{
   uploaded: number;
   already: number;
   errors: string[];
 }> {
+  const force = new Set(opts?.forceIndices ?? []);
   const urls = [...(item.photoUrls ?? [])];
   let uploaded = 0;
   let already = 0;
   const errors: string[] = [];
   for (let i = 0; i < item.photos.length; i++) {
-    if (urls[i]) {
+    if (urls[i] && !force.has(i)) {
       already++;
       continue;
     }
@@ -393,6 +410,29 @@ export async function uploadItemPhotos(item: Item): Promise<{
     pushItemsToSheetLive([{ ...item, photoUrls: urls }]);
   }
   return { uploaded, already, errors };
+}
+
+// The Drive file id inside a hosted photo URL (uc?export=...&id=<id>).
+export function driveFileIdFromUrl(url: string): string {
+  const m = /[?&]id=([^&]+)/.exec(url ?? '');
+  return m ? m[1] : '';
+}
+
+// Delete a hosted photo from Drive — called when a photo is removed
+// from an item, so Drive does not keep an orphaned file behind. Best
+// effort: a no-op when sync is not configured or the URL has no file
+// id, and failures are swallowed (the caller has already removed the
+// photo locally and from the sheet; a leftover Drive file is untidy,
+// not an error the user needs to act on).
+export async function deletePhotoFromDrive(url: string): Promise<void> {
+  if (!isSyncConfigured()) return;
+  const fileId = driveFileIdFromUrl(url);
+  if (!fileId) return;
+  try {
+    await postSync({ action: 'deletePhoto', fileId });
+  } catch {
+    // best effort — see above
+  }
 }
 
 // Push one or more items to the sheet as upserts (merge). Used when an
