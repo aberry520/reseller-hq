@@ -20,7 +20,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
 import { pushItemsToSheetLive, uploadItemPhotos } from '../../src/lib/sync';
-import { cleanName } from '../../src/lib/listing';
+import { cleanName, photoUriAt } from '../../src/lib/listing';
 import {
   ebayMargin,
   ebayProfit,
@@ -141,25 +141,14 @@ export default function ItemScreen() {
   // skipped on the render where item is still null (first load) and runs
   // on the next one — React then throws "Rendered more hooks than during
   // the previous render" and the item screen crashes.
-  // Drive's `uc?export=download` URL forces a file download, so it will
-  // not render in an <img> / React Native Image on web. `export=view`
-  // serves the same file inline. Rewrite any stored download URL to the
-  // view URL, so photos uploaded before this fix still display.
-  const driveViewUrl = (url: string) =>
-    url.replace('drive.google.com/uc?export=download&id=', 'drive.google.com/uc?export=view&id=');
   const displayPhotos = useMemo(() => {
     if (!item) return [] as { uri: string; uploaded: boolean; hasLocal: boolean }[];
     const urls = item.photoUrls ?? [];
-    const wb = alignWhiteBg(item.photos, item.whiteBgPhotos);
     const n = Math.max(item.photos.length, urls.length);
     const out: { uri: string; uploaded: boolean; hasLocal: boolean }[] = [];
     for (let i = 0; i < n; i++) {
       out.push({
-        // Prefer a local file when one exists (white-bg, then original).
-        // The Drive URL is only a fallback for when there is no local
-        // file — on web, or for a hosted-only photo. A Drive URL that
-        // fails to load must not hide a local photo that is right here.
-        uri: wb[i] || item.photos[i] || driveViewUrl(urls[i] ?? '') || '',
+        uri: photoUriAt(item, i),
         uploaded: !!urls[i],
         hasLocal: !!item.photos[i],
       });

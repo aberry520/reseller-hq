@@ -18,7 +18,7 @@ import { getAllItems, getCounts, setStatus } from '../../src/lib/db';
 import { pushItemsToSheetLive } from '../../src/lib/sync';
 import { formatMoney } from '../../src/lib/pricing';
 import { parseDashboardDate } from '../../src/lib/dashboard';
-import { cleanName } from '../../src/lib/listing';
+import { cleanName, coverPhotoUri } from '../../src/lib/listing';
 import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 import type { Item, ItemStatus } from '../../src/lib/types';
 
@@ -93,10 +93,11 @@ function matchesFilter(item: Item, filter: Filter): boolean {
 }
 
 function RowContent({ item }: { item: Item }) {
+  const coverUri = coverPhotoUri(item);
   return (
     <>
-      {item.photos.length > 0 ? (
-        <Image source={{ uri: item.photos[0] }} style={styles.thumb} />
+      {coverUri ? (
+        <Image source={{ uri: coverUri }} style={styles.thumb} />
       ) : (
         <View style={styles.thumbPlaceholder}>
           <Text style={styles.thumbPlaceholderText}>No{'\n'}photo</Text>

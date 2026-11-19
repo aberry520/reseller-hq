@@ -107,3 +107,27 @@ export function ebayDraftMissing(item: Item): string[] {
   if (!(item.suggestedPrice > 0)) missing.push('Price');
   return missing;
 }
+
+// Drive's `uc?export=download` URL forces a file download, so it will not
+// render in an <img> / React Native Image. `export=view` serves the same
+// file inline. Rewrite any stored download URL to the view URL, so photos
+// uploaded before that fix still display.
+export function driveViewUrl(url: string): string {
+  return url.replace('drive.google.com/uc?export=download&id=', 'drive.google.com/uc?export=view&id=');
+}
+
+// Best URI for the photo at index i: prefer a local file (white-bg, then
+// original), fall back to the Drive URL when there is no local file (web,
+// or a hosted-only photo). A Drive URL that fails to load must not hide a
+// local photo that is right here.
+export function photoUriAt(item: Item, index: number): string {
+  const wb = item.whiteBgPhotos?.[index] ?? '';
+  const local = item.photos?.[index] ?? '';
+  const hosted = driveViewUrl(item.photoUrls?.[index] ?? '');
+  return wb || local || hosted || '';
+}
+
+/** The item's cover photo (first photo) — same resolution as photoUriAt. */
+export function coverPhotoUri(item: Item): string {
+  return photoUriAt(item, 0);
+}
