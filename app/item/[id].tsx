@@ -80,7 +80,6 @@ export default function ItemScreen() {
   const [bgNote, setBgNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [statusNote, setStatusNote] = useState('');
-  const [costsNote, setCostsNote] = useState('');
   // Manual photo upload to Drive: only photos without a URL yet go up.
   const [uploadNote, setUploadNote] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -88,7 +87,7 @@ export default function ItemScreen() {
   // sending the item to the ebay-draft tab.
   const [ebayCategoryId, setEbayCategoryId] = useState('');
   const [ebayCondition, setEbayCondition] = useState(DEFAULT_EBAY_CONDITION);
-  const [ebayNote, setEbayNote] = useState('');
+  const [detailsNote, setDetailsNote] = useState('');
   const [catPickerVisible, setCatPickerVisible] = useState(false);
   const ebayCategory = ebayCategoryById(ebayCategoryId.trim());
   // Full-screen photo viewer: index into item.photos, null = closed.
@@ -240,18 +239,24 @@ export default function ItemScreen() {
   // Photos with a local file but no Drive URL yet — these are what the
   // automatic upload still owes (never uploaded, or an attempt failed).
   const pendingUploads = item.photos.filter((_, i) => !(item.photoUrls ?? [])[i]).length;
-  const minEbay = minEbayPrice(allIn, item.estShip, settings.ebayFeePct, settings.targetMarginPct);
+  // Price calculator: the predictions run off the values currently
+  // typed into the calculator (cost + estimated shipping), so they
+  // update live as you type — not just after a save.
+  const calcCost = parseMoney(cost);
+  const calcAllIn = applyMacBid ? macBidAllIn(calcCost) : calcCost;
+  const calcEstShip = parseMoney(estShipStr);
+  const minEbay = minEbayPrice(calcAllIn, calcEstShip, settings.ebayFeePct, settings.targetMarginPct);
   const suggested = suggestedEbayPrice(
-    allIn,
-    item.estShip,
+    calcAllIn,
+    calcEstShip,
     item.researchPrice,
     settings.ebayFeePct,
     settings.targetMarginPct,
   );
-  const fb = facebookPrice(suggested, item.estShip, settings.ebayFeePct);
-  const marginAtSuggested = ebayMargin(suggested, allIn, item.estShip, settings.ebayFeePct);
-  const profitAtSuggested = ebayProfit(suggested, allIn, item.estShip, settings.ebayFeePct);
-  const ok = passesMargin(suggested, allIn, item.estShip, settings.ebayFeePct, settings.targetMarginPct);
+  const fb = facebookPrice(suggested, calcEstShip, settings.ebayFeePct);
+  const marginAtSuggested = ebayMargin(suggested, calcAllIn, calcEstShip, settings.ebayFeePct);
+  const profitAtSuggested = ebayProfit(suggested, calcAllIn, calcEstShip, settings.ebayFeePct);
+  const ok = passesMargin(suggested, calcAllIn, calcEstShip, settings.ebayFeePct, settings.targetMarginPct);
   // Actual sale numbers, shown instead of the suggested price once the
   // item is sold. Computed live from the stored sold price / fees /
   // shipping so the card is right even before Save costs runs.
@@ -592,50 +597,34 @@ export default function ItemScreen() {
     setTimeout(() => setStatusNote(''), 3000);
   };
 
-  const saveCosts = () => {
+  // Price calculator inputs (cost + estimated shipping) save
+  // themselves: this runs when a field loses focus (and when the
+  // MAC.BID toggle flips), so the calculator has no Save button. The
+  // predictions are computed live from the typed values, so they are
+  // already current on screen; this persists them to the item + sheet.
+  const commitCalculator = () => {
     const purchase = parseMoney(cost);
     const estShip = parseMoney(estShipStr);
-    const soldPrice = parseMoney(soldStr);
-    const fees = parseMoney(feesStr);
-    const shipping = parseMoney(shipStr);
-    const costBasis = applyMacBid ? macBidAllIn(purchase) : purchase;
-    const profit = soldPrice > 0 ? soldPrice - costBasis - fees - shipping : 0;
-    const revenue = soldPrice;
-    const profitMargin = soldPrice > 0 ? `${((profit / soldPrice) * 100).toFixed(1)}%` : '';
-    const next = {
-      ...item,
-      purchase,
-      estShip,
-      soldPrice,
-      fees,
-      shipping,
-      profit,
-      revenue,
-      profitMargin,
-      dateSold: soldDateStr.trim(),
-    };
+    if (purchase === item.purchase && estShip === item.estShip) return;
+    const next = { ...item, purchase, estShip };
     updateItem(item.id, next);
     setItem(next);
     pushItemsToSheetLive([next]);
-    setCostsNote('✓ Costs saved');
-    setTimeout(() => setCostsNote(''), 3000);
   };
 
-  const saveLocation = () => {
-    updateItem(item.id, { location });
-    pushItemsToSheetLive([{ ...item, location }]);
-    Alert.alert('Saved', `Location set to "${location || '(blank)'}"`);
-  };
-
-  // eBay draft fields are app-only (the sheet has no columns for them),
-  // so they are saved locally only — no sheet push.
-  const saveEbay = () => {
+  // One save for the Details card: location (synced to the sheet) and
+  // the eBay fields (app-only, saved locally — the sheet has no columns
+  // for them). The status chips in the same card apply immediately, so
+  // they are not part of this save.
+  const saveDetails = () => {
     const cat = ebayCategoryId.trim();
     const cond = ebayCondition || DEFAULT_EBAY_CONDITION;
-    updateItem(item.id, { ebayCategoryId: cat, ebayCondition: cond });
-    setItem({ ...item, ebayCategoryId: cat, ebayCondition: cond });
-    setEbayNote('✓ eBay details saved');
-    setTimeout(() => setEbayNote(''), 3000);
+    const next = { ...item, location, ebayCategoryId: cat, ebayCondition: cond };
+    updateItem(item.id, next);
+    setItem(next);
+    pushItemsToSheetLive([next]);
+    setDetailsNote('✓ Details saved');
+    setTimeout(() => setDetailsNote(''), 3000);
   };
 
   const confirmDelete = () => {
@@ -686,16 +675,14 @@ export default function ItemScreen() {
       </Text>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>
-          {isSold ? 'Sold' : 'Pricing (30% margin target, 13.6% eBay fee)'}
-        </Text>
+        <Text style={styles.cardTitle}>{isSold ? 'Sale' : 'Price calculator'}</Text>
         {isSold ? (
           <>
             <View style={styles.hero}>
               <Text style={styles.heroLabel}>
-                Sold for{item.dateSold ? ` · ${item.dateSold}` : ''}
+                Revenue from this sale{item.dateSold ? ` · ${item.dateSold}` : ''}
               </Text>
-              <Text style={styles.heroPrice}>{formatMoney(item.soldPrice)}</Text>
+              <Text style={styles.heroPrice}>{formatMoney(actualRevenue)}</Text>
               <Text
                 style={[
                   styles.pill,
@@ -706,6 +693,10 @@ export default function ItemScreen() {
               </Text>
             </View>
             <View style={styles.tileGrid}>
+              <View style={styles.tile}>
+                <Text style={styles.tileLabel}>Sold for</Text>
+                <Text style={styles.tileValue}>{formatMoney(item.soldPrice)}</Text>
+              </View>
               <View style={styles.tile}>
                 <Text style={styles.tileLabel}>{applyMacBid ? 'Cost (all-in)' : 'Cost'}</Text>
                 <Text style={styles.tileValue}>{formatMoney(allIn)}</Text>
@@ -720,10 +711,6 @@ export default function ItemScreen() {
                 <Text style={styles.tileValue}>{formatMoney(item.shipping)}</Text>
               </View>
               <View style={styles.tile}>
-                <Text style={styles.tileLabel}>Revenue</Text>
-                <Text style={styles.tileValue}>{formatMoney(actualRevenue)}</Text>
-              </View>
-              <View style={styles.tile}>
                 <Text style={styles.tileLabel}>Profit</Text>
                 <Text style={styles.tileValue}>{formatMoney(actualProfit)}</Text>
               </View>
@@ -733,11 +720,61 @@ export default function ItemScreen() {
               </View>
             </View>
             <Pressable style={styles.btn} onPress={openSoldModal}>
-              <Text style={styles.btnText}>Edit sold details</Text>
+              <Text style={styles.btnText}>Edit sale</Text>
             </Pressable>
           </>
         ) : (
           <>
+            <View style={styles.switchRow}>
+              <Text style={styles.switchLabel}>Bought on MAC.BID — add fees + tax</Text>
+              <Switch
+                value={applyMacBid}
+                onValueChange={(v) => {
+                  const next = {
+                    ...item,
+                    macBidFees: v,
+                    purchase: parseMoney(cost),
+                    estShip: parseMoney(estShipStr),
+                  };
+                  updateItem(item.id, next);
+                  setItem(next);
+                  pushItemsToSheetLive([next]);
+                }}
+              />
+            </View>
+            <Text style={styles.note}>
+              {applyMacBid
+                ? 'On: cost = (bid × 1.15 + $3) × 1.07.'
+                : 'Off: the cost you enter is the total cost of goods, no fees or tax added.'}
+            </Text>
+            <View style={styles.moneyGrid}>
+              <View style={styles.moneyField}>
+                <Text style={styles.fieldLabel}>
+                  {applyMacBid ? 'Bid (MAC.BID)' : 'Total cost of goods'}
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  value={cost}
+                  onChangeText={setCost}
+                  onBlur={commitCalculator}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  returnKeyType="done"
+                />
+              </View>
+              <View style={styles.moneyField}>
+                <Text style={styles.fieldLabel}>Est. shipping</Text>
+                <TextInput
+                  style={styles.input}
+                  value={estShipStr}
+                  onChangeText={setEstShipStr}
+                  onBlur={commitCalculator}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  returnKeyType="done"
+                />
+              </View>
+            </View>
             <View style={styles.hero}>
               <Text style={styles.heroLabel}>Suggested eBay price</Text>
               <Text style={styles.heroPrice}>{formatMoney(suggested)}</Text>
@@ -751,15 +788,6 @@ export default function ItemScreen() {
               </Text>
             </View>
             <View style={styles.tileGrid}>
-              <View style={styles.tile}>
-                <Text style={styles.tileLabel}>{applyMacBid ? 'Cost (all-in)' : 'Cost'}</Text>
-                <Text style={styles.tileValue}>{formatMoney(allIn)}</Text>
-                {applyMacBid && <Text style={styles.tileSub}>bid {formatMoney(item.purchase)}</Text>}
-              </View>
-              <View style={styles.tile}>
-                <Text style={styles.tileLabel}>Est. shipping</Text>
-                <Text style={styles.tileValue}>{formatMoney(item.estShip)}</Text>
-              </View>
               <View style={styles.tile}>
                 <Text style={styles.tileLabel}>Min eBay price</Text>
                 <Text style={styles.tileValue}>{formatMoney(minEbay)}</Text>
@@ -778,101 +806,18 @@ export default function ItemScreen() {
                 <Text style={styles.tileValue}>{(marginAtSuggested * 100).toFixed(1)}%</Text>
               </View>
             </View>
-            {item.soldPrice > 0 && (
-              <Text style={styles.line}>
-                Sold for {formatMoney(item.soldPrice)} · actual profit {formatMoney(item.profit)}
-                {item.profitMargin ? ` · margin ${item.profitMargin}` : ''}
-              </Text>
-            )}
+            <Text style={styles.note}>
+              Predictions update as you type and save automatically — cost and estimated
+              shipping are the only inputs.
+            </Text>
+            <Pressable
+              style={StyleSheet.flatten([styles.btn, styles.soldBtn])}
+              onPress={openSoldModal}
+            >
+              <Text style={styles.btnText}>Mark as Sold</Text>
+            </Pressable>
           </>
         )}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Costs &amp; sale</Text>
-        <Text style={styles.note}>Same columns as the spreadsheet — edit, then save.</Text>
-        <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Bought on MAC.BID — add fees + tax</Text>
-          <Switch
-            value={applyMacBid}
-            onValueChange={(v) => {
-              const next = { ...item, macBidFees: v };
-              updateItem(item.id, next);
-              setItem(next);
-            }}
-          />
-        </View>
-        <Text style={styles.note}>
-          {applyMacBid
-            ? 'On: cost = (bid × 1.15 + $3) × 1.07.'
-            : 'Off: the cost you enter is the total cost of goods, no fees or tax added.'}
-        </Text>
-        <View style={styles.moneyGrid}>
-          <View style={styles.moneyField}>
-            <Text style={styles.fieldLabel}>
-              {applyMacBid ? 'Bid (MAC.BID)' : 'Total cost of goods'}
-            </Text>
-            <TextInput
-              style={styles.input}
-              value={cost}
-              onChangeText={setCost}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              returnKeyType="done"
-            />
-          </View>
-          <View style={styles.moneyField}>
-            <Text style={styles.fieldLabel}>Est. shipping</Text>
-            <TextInput
-              style={styles.input}
-              value={estShipStr}
-              onChangeText={setEstShipStr}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              returnKeyType="done"
-            />
-          </View>
-          <View style={styles.moneyField}>
-            <Text style={styles.fieldLabel}>Sold price</Text>
-            <TextInput
-              style={styles.input}
-              value={soldStr}
-              onChangeText={setSoldStr}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              returnKeyType="done"
-            />
-          </View>
-          <View style={styles.moneyField}>
-            <Text style={styles.fieldLabel}>Fees paid</Text>
-            <TextInput
-              style={styles.input}
-              value={feesStr}
-              onChangeText={setFeesStr}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              returnKeyType="done"
-            />
-          </View>
-          <View style={styles.moneyField}>
-            <Text style={styles.fieldLabel}>Shipping paid</Text>
-            <TextInput
-              style={styles.input}
-              value={shipStr}
-              onChangeText={setShipStr}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              returnKeyType="done"
-            />
-          </View>
-          <View style={styles.moneyField}>
-            <DateField label="Date sold" value={soldDateStr} onChange={setSoldDateStr} />
-          </View>
-        </View>
-        <Pressable style={styles.btn} onPress={saveCosts}>
-          <Text style={styles.btnText}>Save costs</Text>
-        </Pressable>
-        {costsNote !== '' && <Text style={[styles.note, styles.pass]}>{costsNote}</Text>}
       </View>
 
       <View style={styles.card}>
@@ -955,7 +900,39 @@ export default function ItemScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Location / tracking</Text>
+        <Text style={styles.cardTitle}>Details</Text>
+        <Text style={styles.label}>Status</Text>
+        <View style={styles.statusRow}>
+          {ALL_STATUSES.filter((s) => s !== 'Sold').map((s) => (
+            <Pressable
+              key={s}
+              style={[styles.statusChip, item.status === s && styles.statusChipActive]}
+              onPress={() => changeStatus(s)}
+              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+            >
+              <Text
+                style={[styles.statusChipText, item.status === s && styles.statusChipTextActive]}
+              >
+                {s}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        {isSold && (
+          <Text style={styles.note}>
+            Sold — edit the sale in the Sale card above, or pick another status here to move it
+            back.
+          </Text>
+        )}
+        {(item.dateListed !== '' || item.dateSold !== '') && (
+          <Text style={styles.note}>
+            {item.dateListed !== '' ? `Listed ${item.dateListed}` : ''}
+            {item.dateListed !== '' && item.dateSold !== '' ? ' · ' : ''}
+            {item.dateSold !== '' ? `Sold ${item.dateSold}` : ''}
+          </Text>
+        )}
+        {statusNote !== '' && <Text style={[styles.note, styles.pass]}>{statusNote}</Text>}
+        <Text style={styles.label}>Location</Text>
         <TextInput
           style={styles.input}
           placeholder="Shelf, bin, garage…"
@@ -963,15 +940,8 @@ export default function ItemScreen() {
           onChangeText={setLocation}
           returnKeyType="done"
         />
-        <Pressable style={styles.btn} onPress={saveLocation}>
-          <Text style={styles.btnText}>Save location</Text>
-        </Pressable>
         {item.notes ? <Text style={styles.line}>Notes: {item.notes}</Text> : null}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>eBay listing</Text>
-        <Text style={styles.label}>Category</Text>
+        <Text style={styles.label}>eBay category</Text>
         <Pressable
           style={styles.catPick}
           onPress={() => setCatPickerVisible(true)}
@@ -999,7 +969,7 @@ export default function ItemScreen() {
           onSelect={(cat: EbayCategory) => setEbayCategoryId(cat.id)}
           onClose={() => setCatPickerVisible(false)}
         />
-        <Text style={styles.label}>Condition</Text>
+        <Text style={styles.label}>eBay condition</Text>
         <View style={styles.statusRow}>
           {EBAY_CONDITIONS.map((c) => (
             <Pressable
@@ -1016,43 +986,15 @@ export default function ItemScreen() {
             </Pressable>
           ))}
         </View>
-        <Pressable style={styles.btn} onPress={saveEbay}>
-          <Text style={styles.btnText}>Save eBay details</Text>
+        <Pressable style={styles.btn} onPress={saveDetails}>
+          <Text style={styles.btnText}>Save details</Text>
         </Pressable>
-        {ebayNote !== '' && <Text style={[styles.note, styles.pass]}>{ebayNote}</Text>}
+        {detailsNote !== '' && <Text style={[styles.note, styles.pass]}>{detailsNote}</Text>}
         {ebayCategoryId.trim() === '' && (
           <Text style={styles.note}>
-            Set a Category ID before sending this item to eBay drafts — eBay requires one.
+            Set a category before sending this item to eBay drafts — eBay requires one.
           </Text>
         )}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Status — {item.status}</Text>
-        <View style={styles.statusRow}>
-          {ALL_STATUSES.map((s) => (
-            <Pressable
-              key={s}
-              style={[styles.statusChip, item.status === s && styles.statusChipActive]}
-              onPress={() => changeStatus(s)}
-              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-            >
-              <Text
-                style={[styles.statusChipText, item.status === s && styles.statusChipTextActive]}
-              >
-                {s}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        {(item.dateListed !== '' || item.dateSold !== '') && (
-          <Text style={styles.note}>
-            {item.dateListed !== '' ? `Listed ${item.dateListed}` : ''}
-            {item.dateListed !== '' && item.dateSold !== '' ? ' · ' : ''}
-            {item.dateSold !== '' ? `Sold ${item.dateSold}` : ''}
-          </Text>
-        )}
-        {statusNote !== '' && <Text style={[styles.note, styles.pass]}>{statusNote}</Text>}
         {item.status === 'Deleted' && (
           <Text style={styles.note}>
             This item is deleted — it is hidden from the list and kept in the sheet. Tap Restore
@@ -1213,10 +1155,10 @@ export default function ItemScreen() {
         }}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.modalTitle}>Mark as sold</Text>
+        <Text style={styles.modalTitle}>{isSold ? 'Edit sale' : 'Mark as sold'}</Text>
         <Text style={styles.note}>
-          Enter what it actually sold for — the item card will show these sold details instead of
-          the suggested price.
+          Enter what it actually sold for — the item will show the revenue from the sale instead
+          of the suggested price.
         </Text>
         <View style={styles.modalField}>
           <Text style={styles.fieldLabel}>Sold price</Text>
@@ -1257,14 +1199,15 @@ export default function ItemScreen() {
         </View>
         {parseMoney(soldStr) > 0 && (
           <Text style={styles.line}>
-            Profit {formatMoney(parseMoney(soldStr) - allIn - parseMoney(feesStr) - parseMoney(shipStr))} ·{' '}
+            Revenue {formatMoney(parseMoney(soldStr) - parseMoney(feesStr) - parseMoney(shipStr))} ·{' '}
+            profit {formatMoney(parseMoney(soldStr) - allIn - parseMoney(feesStr) - parseMoney(shipStr))} ·{' '}
             margin{' '}
             {(((parseMoney(soldStr) - allIn - parseMoney(feesStr) - parseMoney(shipStr)) / parseMoney(soldStr)) * 100).toFixed(1)}%
           </Text>
         )}
         <View style={styles.btnRow}>
           <Pressable style={styles.btn} onPress={saveSoldDetails}>
-            <Text style={styles.btnText}>Save sold details</Text>
+            <Text style={styles.btnText}>{isSold ? 'Save sale' : 'Mark as Sold'}</Text>
           </Pressable>
           <Pressable
             style={StyleSheet.flatten([styles.btn, styles.cancelBtn])}
@@ -1297,6 +1240,7 @@ const styles = StyleSheet.create({
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   deleteBtn: { backgroundColor: colors.danger, marginTop: spacing.lg },
   restoreBtn: { backgroundColor: colors.primary, marginTop: spacing.lg },
+  soldBtn: { backgroundColor: '#1a7f37', marginTop: spacing.md, paddingVertical: 14 },
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,
