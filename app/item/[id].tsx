@@ -141,6 +141,12 @@ export default function ItemScreen() {
   // skipped on the render where item is still null (first load) and runs
   // on the next one — React then throws "Rendered more hooks than during
   // the previous render" and the item screen crashes.
+  // Drive's `uc?export=download` URL forces a file download, so it will
+  // not render in an <img> / React Native Image on web. `export=view`
+  // serves the same file inline. Rewrite any stored download URL to the
+  // view URL, so photos uploaded before this fix still display.
+  const driveViewUrl = (url: string) =>
+    url.replace('drive.google.com/uc?export=download&id=', 'drive.google.com/uc?export=view&id=');
   const displayPhotos = useMemo(() => {
     if (!item) return [] as { uri: string; uploaded: boolean; hasLocal: boolean }[];
     const urls = item.photoUrls ?? [];
@@ -149,7 +155,7 @@ export default function ItemScreen() {
     const out: { uri: string; uploaded: boolean; hasLocal: boolean }[] = [];
     for (let i = 0; i < n; i++) {
       out.push({
-        uri: wb[i] || urls[i] || item.photos[i] || '',
+        uri: wb[i] || driveViewUrl(urls[i] ?? '') || item.photos[i] || '',
         uploaded: !!urls[i],
         hasLocal: !!item.photos[i],
       });

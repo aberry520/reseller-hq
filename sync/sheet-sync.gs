@@ -531,7 +531,7 @@ function doPost(e) {
       return json_({
         ok: true,
         fileId: file.getId(),
-        url: 'https://drive.google.com/uc?export=download&id=' + file.getId()
+        url: 'https://drive.google.com/uc?export=view&id=' + file.getId()
       });
     }
 
