@@ -155,7 +155,11 @@ export default function ItemScreen() {
     const out: { uri: string; uploaded: boolean; hasLocal: boolean }[] = [];
     for (let i = 0; i < n; i++) {
       out.push({
-        uri: wb[i] || driveViewUrl(urls[i] ?? '') || item.photos[i] || '',
+        // Prefer a local file when one exists (white-bg, then original).
+        // The Drive URL is only a fallback for when there is no local
+        // file — on web, or for a hosted-only photo. A Drive URL that
+        // fails to load must not hide a local photo that is right here.
+        uri: wb[i] || item.photos[i] || driveViewUrl(urls[i] ?? '') || '',
         uploaded: !!urls[i],
         hasLocal: !!item.photos[i],
       });
