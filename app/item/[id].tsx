@@ -95,6 +95,15 @@ export default function ItemScreen() {
   // Details card is collapsible and starts collapsed — the calculator
   // and photos are the everyday flow; details are occasional edits.
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // The remaining editable sheet fields (Place of Purchase, Date
+  // Purchased, Date Listed), edited in the Details card and saved with
+  // its Save button.
+  const [place, setPlace] = useState('');
+  const [datePurchased, setDatePurchased] = useState('');
+  const [dateListed, setDateListed] = useState('');
+  // Item name editing happens inline in the header (pencil icon).
+  const [editingName, setEditingName] = useState(false);
+  const [nameText, setNameText] = useState('');
   const ebayCategory = ebayCategoryById(ebayCategoryId.trim());
   // Full-screen photo viewer: index into item.photos, null = closed.
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
@@ -129,6 +138,9 @@ export default function ItemScreen() {
       setLocation(it.location);
       setEbayCategoryId(it.ebayCategoryId ?? '');
       setEbayCondition(it.ebayCondition ?? DEFAULT_EBAY_CONDITION);
+      setPlace(it.place);
+      setDatePurchased(it.datePurchased);
+      setDateListed(it.dateListed);
     }
   }, [id]);
 
@@ -274,26 +286,13 @@ export default function ItemScreen() {
   // Margin calculator lives on its own screen now (Calculator, from the
   // inventory footer) — it is a generic tool, not tied to this item.
 
-  const takePhoto = async (fromCamera: boolean) => {
-    const fn = fromCamera
-      ? ImagePicker.launchCameraAsync
-      : ImagePicker.launchImageLibraryAsync;
-    const result = await fn({
-      mediaTypes: ['images'],
-      quality: 0.85,
-      // Show the crop screen at capture time, locked to square (1:1) for
-      // eBay, so the framing can be adjusted before the photo is saved.
-      allowsEditing: true,
-      aspect: [1, 1],
-    });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
-    // eBay displays best with square (1:1) images. The picker above already
-    // shows the square crop screen on the phone; this center-crop is the
-    // fallback (web ignores the picker's crop UI) so every photo saved is
-    // square either way. If the crop ever fails, keep the original so the
-    // photo is never lost.
-    let uri = asset.uri;
+  // Center-crop a picked photo to square (1:1) — eBay displays best
+  // with square images. The camera picker already shows a square crop
+  // screen; this guarantees the result is square either way, and it is
+  // the only crop for library picks (the crop UI can't be shown when
+  // several photos are picked at once). If the crop ever fails, keep
+  // the original so the photo is never lost.
+  const squareCrop = async (asset: ImagePicker.ImagePickerAsset): Promise<string> => {
     try {
       const side = Math.min(asset.width, asset.height);
       const cropped = await ImageManipulator.manipulateAsync(
@@ -310,23 +309,58 @@ export default function ItemScreen() {
         ],
         { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG },
       );
-      uri = cropped.uri;
+      return cropped.uri;
     } catch {
-      // fall through with the original photo
+      return asset.uri;
     }
+  };
+
+  const appendPhotos = (uris: string[]) => {
+    const photos = [...item.photos, ...uris];
     const next = {
       ...item,
-      photos: [...item.photos, uri],
-      // Keep the white-bg array the same length as the photos, aligned by
-      // index ('' = no white-bg version yet for that photo). Otherwise the
-      // next batch removal can't tell which photos already have one and
-      // re-processes everything.
-      whiteBgPhotos: alignWhiteBg([...item.photos, uri], item.whiteBgPhotos),
+      photos,
+      // Keep the white-bg array the same length as the photos, aligned
+      // by index ('' = no white-bg version yet for that photo).
+      // Otherwise the next batch removal can't tell which photos
+      // already have one and re-processes everything.
+      whiteBgPhotos: alignWhiteBg(photos, item.whiteBgPhotos),
     };
     updateItem(item.id, next);
     setItem(next);
-    // Upload the new photo to Drive automatically.
+    // Upload the new photos to Drive automatically.
     void autoUpload(next);
+  };
+
+  const takePhoto = async (fromCamera: boolean) => {
+    if (fromCamera) {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        quality: 0.85,
+        // Show the crop screen at capture time, locked to square (1:1)
+        // for eBay, so the framing can be adjusted before the photo is
+        // saved.
+        allowsEditing: true,
+        aspect: [1, 1],
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      appendPhotos([await squareCrop(result.assets[0])]);
+      return;
+    }
+    // Library: pick as many photos as needed in one go — handy when
+    // the pictures were taken earlier with the camera app. Each one is
+    // center-cropped to square by squareCrop.
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.85,
+      allowsMultipleSelection: true,
+    });
+    if (result.canceled || !result.assets?.length) return;
+    const uris: string[] = [];
+    for (const asset of result.assets) {
+      uris.push(await squareCrop(asset));
+    }
+    appendPhotos(uris);
   };
 
   // Batch background removal: send every photo that does not yet have a
@@ -618,19 +652,46 @@ export default function ItemScreen() {
     pushItemsToSheetLive([next]);
   };
 
-  // One save for the Details card: location (synced to the sheet) and
-  // the eBay fields (app-only, saved locally — the sheet has no columns
-  // for them). The status chips in the same card apply immediately, so
-  // they are not part of this save.
+  // One save for the Details card: the sheet fields edited there
+  // (location, place of purchase, dates) plus the eBay fields
+  // (app-only — the sheet has no columns for them). The status
+  // dropdown in the same card applies immediately, so it is not part
+  // of this save.
   const saveDetails = () => {
     const cat = ebayCategoryId.trim();
     const cond = ebayCondition || DEFAULT_EBAY_CONDITION;
-    const next = { ...item, location, ebayCategoryId: cat, ebayCondition: cond };
+    const next = {
+      ...item,
+      location,
+      place: place.trim(),
+      datePurchased: datePurchased.trim(),
+      dateListed: dateListed.trim(),
+      ebayCategoryId: cat,
+      ebayCondition: cond,
+    };
     updateItem(item.id, next);
     setItem(next);
     pushItemsToSheetLive([next]);
     setDetailsNote('✓ Details saved');
     setTimeout(() => setDetailsNote(''), 3000);
+  };
+
+  // The item name is edited inline in the header (pencil icon) — it is
+  // the field most often fixed while taking inventory, so it does not
+  // live in the collapsed Details card.
+  const startEditName = () => {
+    setNameText(item.name);
+    setEditingName(true);
+  };
+
+  const saveName = () => {
+    const name = nameText.trim();
+    setEditingName(false);
+    if (name === '' || name === item.name) return;
+    const next = { ...item, name };
+    updateItem(item.id, next);
+    setItem(next);
+    pushItemsToSheetLive([next]);
   };
 
   const confirmDelete = () => {
@@ -674,7 +735,37 @@ export default function ItemScreen() {
       ]}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.title}>{cleanName(item.name)}</Text>
+      {editingName ? (
+        <View style={styles.nameEditRow}>
+          <TextInput
+            style={[styles.input, styles.nameEditInput]}
+            value={nameText}
+            onChangeText={setNameText}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={saveName}
+            placeholder="Item name"
+            placeholderTextColor={colors.muted}
+          />
+          <Pressable style={styles.btn} onPress={saveName} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+            <Text style={styles.btnText}>Save</Text>
+          </Pressable>
+          <Pressable style={styles.btn} onPress={() => setEditingName(false)} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+            <Text style={styles.btnText}>Cancel</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.nameRow}>
+          <Text style={[styles.title, styles.nameTitle]}>{cleanName(item.name)}</Text>
+          <Pressable
+            onPress={startEditName}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Edit item name"
+          >
+            <Ionicons name="create-outline" size={20} color={colors.muted} />
+          </Pressable>
+        </View>
+      )}
       <Text style={styles.meta}>
         {item.id} · {item.status} · {item.place || 'no source'} · bought{' '}
         {item.datePurchased || '—'}
@@ -682,158 +773,11 @@ export default function ItemScreen() {
 
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardHeaderTitle}>{isSold ? 'Sale' : 'Price calculator'}</Text>
-          <InfoButton
-            title={isSold ? 'About this sale' : 'About the price calculator'}
-            message={
-              isSold
-                ? 'Revenue is what the sale brought in after fees and shipping (sold price − fees − shipping). Profit is revenue minus your all-in cost, and margin is profit as a share of the sold price. Tap Edit sale to change the sold price, fees, shipping, or date.'
-                : 'Type a cost and an estimated shipping amount and the prices update as you type — they save automatically when you leave a field. Suggested eBay price targets a 30% margin after the 13.6% eBay fee; Min eBay price is break-even on margin; the Facebook price is the suggested price minus shipping and fees, rounded up to the nearest $5. If the item came from MAC.BID, turn on the MAC.BID switch and enter the bid — the all-in cost is (bid × 1.15 + $3) × 1.07.'
-            }
-          />
-        </View>
-        {isSold ? (
-          <>
-            <View style={styles.hero}>
-              <Text style={styles.heroLabel}>
-                Revenue from this sale{item.dateSold ? ` · ${item.dateSold}` : ''}
-              </Text>
-              <Text style={styles.heroPrice}>{formatMoney(actualRevenue)}</Text>
-              <Text
-                style={[
-                  styles.pill,
-                  actualProfit >= 0 ? styles.pillPass : styles.pillFail,
-                ]}
-              >
-                Profit {formatMoney(actualProfit)} · margin {actualMargin.toFixed(1)}%
-              </Text>
-            </View>
-            <View style={styles.tileGrid}>
-              <View style={styles.tile}>
-                <Text style={styles.tileLabel}>Sold for</Text>
-                <Text style={styles.tileValue}>{formatMoney(item.soldPrice)}</Text>
-              </View>
-              <View style={styles.tile}>
-                <Text style={styles.tileLabel}>{applyMacBid ? 'Cost (all-in)' : 'Cost'}</Text>
-                <Text style={styles.tileValue}>{formatMoney(allIn)}</Text>
-                {applyMacBid && <Text style={styles.tileSub}>bid {formatMoney(item.purchase)}</Text>}
-              </View>
-              <View style={styles.tile}>
-                <Text style={styles.tileLabel}>Fees paid</Text>
-                <Text style={styles.tileValue}>{formatMoney(item.fees)}</Text>
-              </View>
-              <View style={styles.tile}>
-                <Text style={styles.tileLabel}>Shipping paid</Text>
-                <Text style={styles.tileValue}>{formatMoney(item.shipping)}</Text>
-              </View>
-              <View style={styles.tile}>
-                <Text style={styles.tileLabel}>Profit</Text>
-                <Text style={styles.tileValue}>{formatMoney(actualProfit)}</Text>
-              </View>
-              <View style={styles.tile}>
-                <Text style={styles.tileLabel}>Margin</Text>
-                <Text style={styles.tileValue}>{actualMargin.toFixed(1)}%</Text>
-              </View>
-            </View>
-            <Pressable style={styles.btn} onPress={openSoldModal}>
-              <Text style={styles.btnText}>Edit sale</Text>
-            </Pressable>
-          </>
-        ) : (
-          <>
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Bought on MAC.BID — add fees + tax</Text>
-              <Switch
-                value={applyMacBid}
-                onValueChange={(v) => {
-                  const next = {
-                    ...item,
-                    macBidFees: v,
-                    purchase: parseMoney(cost),
-                    estShip: parseMoney(estShipStr),
-                  };
-                  updateItem(item.id, next);
-                  setItem(next);
-                  pushItemsToSheetLive([next]);
-                }}
-              />
-            </View>
-            <View style={styles.moneyGrid}>
-              <View style={styles.moneyField}>
-                <Text style={styles.fieldLabel}>
-                  {applyMacBid ? 'Bid (MAC.BID)' : 'Total cost of goods'}
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  value={cost}
-                  onChangeText={setCost}
-                  onBlur={commitCalculator}
-                  keyboardType="decimal-pad"
-                  placeholder="0.00"
-                  returnKeyType="done"
-                />
-              </View>
-              <View style={styles.moneyField}>
-                <Text style={styles.fieldLabel}>Est. shipping</Text>
-                <TextInput
-                  style={styles.input}
-                  value={estShipStr}
-                  onChangeText={setEstShipStr}
-                  onBlur={commitCalculator}
-                  keyboardType="decimal-pad"
-                  placeholder="0.00"
-                  returnKeyType="done"
-                />
-              </View>
-            </View>
-            <View style={styles.hero}>
-              <Text style={styles.heroLabel}>Suggested eBay price</Text>
-              <Text style={styles.heroPrice}>{formatMoney(suggested)}</Text>
-              <Text style={[styles.pill, ok ? styles.pillPass : styles.pillFail]}>
-                {ok ? '✓ Passes 30% margin' : '✗ Below 30% margin — reprice or skip'}
-              </Text>
-              <Text style={styles.note}>
-                {item.researchPrice > 0
-                  ? 'Based on your Research Price'
-                  : 'From margin math (cost + shipping + fees)'}
-              </Text>
-            </View>
-            <View style={styles.tileGrid}>
-              <View style={styles.tile}>
-                <Text style={styles.tileLabel}>Min eBay price</Text>
-                <Text style={styles.tileValue}>{formatMoney(minEbay)}</Text>
-              </View>
-              <View style={styles.tile}>
-                <Text style={styles.tileLabel}>Facebook price</Text>
-                <Text style={styles.tileValue}>{formatMoney(fb)}</Text>
-                <Text style={styles.tileSub}>rounded up to $5</Text>
-              </View>
-              <View style={styles.tile}>
-                <Text style={styles.tileLabel}>Profit at suggested</Text>
-                <Text style={styles.tileValue}>{formatMoney(profitAtSuggested)}</Text>
-              </View>
-              <View style={styles.tile}>
-                <Text style={styles.tileLabel}>Margin at suggested</Text>
-                <Text style={styles.tileValue}>{(marginAtSuggested * 100).toFixed(1)}%</Text>
-              </View>
-            </View>
-            <Pressable
-              style={StyleSheet.flatten([styles.btn, styles.soldBtn])}
-              onPress={openSoldModal}
-            >
-              <Text style={styles.btnText}>Mark as Sold</Text>
-            </Pressable>
-          </>
-        )}
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
           <Text style={styles.cardHeaderTitle}>Photos ({displayPhotos.length})</Text>
           <InfoButton
             title="About photos"
             message={
-              'Photos are cropped square (1:1) for eBay — adjust the crop when you take one. Take all your photos first, then remove backgrounds for all of them at once. Tap a photo to open it full-screen: swipe between photos, whiten the background, make it the cover, replace the original with the white-bg version, or delete it there.\n\nPhotos upload to Google Drive automatically — the white-bg version when there is one — so they show in the web version and the posting extension can use them. If an upload fails, a Retry button appears in this card.'
+              'Photos are cropped square (1:1) for eBay. With the camera, adjust the crop when you take the photo; from the library you can pick several photos at once and each one is center-cropped square automatically. Take all your photos first, then remove backgrounds for all of them at once. Tap a photo to open it full-screen: swipe between photos, whiten the background, make it the cover, replace the original with the white-bg version, or delete it there.\n\nPhotos upload to Google Drive automatically — the white-bg version when there is one — so they show in the web version and the posting extension can use them. If an upload fails, a Retry button appears in this card.'
             }
           />
         </View>
@@ -913,6 +857,154 @@ export default function ItemScreen() {
       </View>
 
       <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardHeaderTitle}>{isSold ? 'Sale' : 'Price calculator'}</Text>
+          <InfoButton
+            title={isSold ? 'About this sale' : 'About the price calculator'}
+            message={
+              isSold
+                ? 'Revenue is what the sale brought in after fees and shipping (sold price − fees − shipping). Profit is revenue minus your all-in cost, and margin is profit as a share of the sold price. Tap Edit sale to change the sold price, fees, shipping, or date.'
+                : 'Type a cost and an estimated shipping amount and the prices update as you type — they save automatically when you leave a field. Suggested eBay price targets a 30% margin after the 13.6% eBay fee; Min eBay price is break-even on margin; the Facebook price is the suggested price minus shipping and fees, rounded up to the nearest $5. If the item came from MAC.BID, turn on the MAC.BID switch and enter the bid — the all-in cost is (bid × 1.15 + $3) × 1.07.'
+            }
+          />
+        </View>
+        {isSold ? (
+          <>
+            <View style={styles.hero}>
+              <Text style={styles.heroLabel}>
+                Revenue from this sale{item.dateSold ? ` · ${item.dateSold}` : ''}
+              </Text>
+              <Text style={styles.heroPrice}>{formatMoney(actualRevenue)}</Text>
+              <Text
+                style={[
+                  styles.pill,
+                  actualProfit >= 0 ? styles.pillPass : styles.pillFail,
+                ]}
+              >
+                Profit {formatMoney(actualProfit)} · margin {actualMargin.toFixed(1)}%
+              </Text>
+            </View>
+            <View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>Sold for</Text>
+                <Text style={styles.statValue}>{formatMoney(item.soldPrice)}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>
+                  {applyMacBid ? `Cost (all-in · bid ${formatMoney(item.purchase)})` : 'Cost'}
+                </Text>
+                <Text style={styles.statValue}>{formatMoney(allIn)}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>Fees paid</Text>
+                <Text style={styles.statValue}>{formatMoney(item.fees)}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>Shipping paid</Text>
+                <Text style={styles.statValue}>{formatMoney(item.shipping)}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>Profit</Text>
+                <Text style={styles.statValue}>{formatMoney(actualProfit)}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>Margin</Text>
+                <Text style={styles.statValue}>{actualMargin.toFixed(1)}%</Text>
+              </View>
+            </View>
+            <Pressable style={styles.btn} onPress={openSoldModal}>
+              <Text style={styles.btnText}>Edit sale</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <View style={styles.switchRow}>
+              <Text style={styles.switchLabel}>Bought on MAC.BID — add fees + tax</Text>
+              <Switch
+                value={applyMacBid}
+                onValueChange={(v) => {
+                  const next = {
+                    ...item,
+                    macBidFees: v,
+                    purchase: parseMoney(cost),
+                    estShip: parseMoney(estShipStr),
+                  };
+                  updateItem(item.id, next);
+                  setItem(next);
+                  pushItemsToSheetLive([next]);
+                }}
+              />
+            </View>
+            <View style={styles.moneyGrid}>
+              <View style={styles.moneyField}>
+                <Text style={styles.fieldLabel}>
+                  {applyMacBid ? 'Bid (MAC.BID)' : 'Total cost of goods'}
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  value={cost}
+                  onChangeText={setCost}
+                  onBlur={commitCalculator}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  returnKeyType="done"
+                />
+              </View>
+              <View style={styles.moneyField}>
+                <Text style={styles.fieldLabel}>Est. shipping</Text>
+                <TextInput
+                  style={styles.input}
+                  value={estShipStr}
+                  onChangeText={setEstShipStr}
+                  onBlur={commitCalculator}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  returnKeyType="done"
+                />
+              </View>
+            </View>
+            <View style={styles.hero}>
+              <Text style={styles.heroLabel}>Suggested eBay price</Text>
+              <Text style={styles.heroPrice}>{formatMoney(suggested)}</Text>
+              <Text style={[styles.pill, ok ? styles.pillPass : styles.pillFail]}>
+                {ok ? '✓ Passes 30% margin' : '✗ Below 30% margin — reprice or skip'}
+              </Text>
+              <Text style={styles.note}>
+                {item.researchPrice > 0
+                  ? 'Based on your Research Price'
+                  : 'From margin math (cost + shipping + fees)'}
+              </Text>
+            </View>
+            <View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>Min eBay price</Text>
+                <Text style={styles.statValue}>{formatMoney(minEbay)}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>Facebook price (rounded up to $5)</Text>
+                <Text style={styles.statValue}>{formatMoney(fb)}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>Profit at suggested</Text>
+                <Text style={styles.statValue}>{formatMoney(profitAtSuggested)}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>Margin at suggested</Text>
+                <Text style={styles.statValue}>{(marginAtSuggested * 100).toFixed(1)}%</Text>
+              </View>
+            </View>
+            <Pressable
+              style={StyleSheet.flatten([styles.btn, styles.soldBtn])}
+              onPress={openSoldModal}
+            >
+              <Text style={styles.btnText}>Mark as Sold</Text>
+            </Pressable>
+          </>
+        )}
+      </View>
+
+
+      <View style={styles.card}>
         <Pressable
           style={styles.cardHeader}
           onPress={() => setDetailsOpen((o) => !o)}
@@ -929,6 +1021,7 @@ export default function ItemScreen() {
           <Text style={styles.note}>
             {item.status}
             {item.location ? ` · ${item.location}` : ''}
+            {item.place ? ` · ${item.place}` : ''}
             {item.dateListed ? ` · listed ${item.dateListed}` : ''}
             {item.dateSold ? ` · sold ${item.dateSold}` : ''}
           </Text>
@@ -947,13 +1040,6 @@ export default function ItemScreen() {
                 it back.
               </Text>
             )}
-            {(item.dateListed !== '' || item.dateSold !== '') && (
-              <Text style={styles.note}>
-                {item.dateListed !== '' ? `Listed ${item.dateListed}` : ''}
-                {item.dateListed !== '' && item.dateSold !== '' ? ' · ' : ''}
-                {item.dateSold !== '' ? `Sold ${item.dateSold}` : ''}
-              </Text>
-            )}
             {statusNote !== '' && <Text style={[styles.note, styles.pass]}>{statusNote}</Text>}
             <Text style={styles.label}>Location</Text>
             <TextInput
@@ -963,6 +1049,16 @@ export default function ItemScreen() {
               onChangeText={setLocation}
               returnKeyType="done"
             />
+            <Text style={styles.label}>Place of purchase</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="MAC.BID, Goodwill, Facebook…"
+              value={place}
+              onChangeText={setPlace}
+              returnKeyType="done"
+            />
+            <DateField label="Date purchased" value={datePurchased} onChange={setDatePurchased} />
+            <DateField label="Date listed" value={dateListed} onChange={setDateListed} />
             {item.notes ? <Text style={styles.line}>Notes: {item.notes}</Text> : null}
             <Text style={styles.label}>eBay category</Text>
             <Pressable
@@ -1297,20 +1393,6 @@ const styles = StyleSheet.create({
   },
   pillPass: { backgroundColor: colors.success, color: '#fff' },
   pillFail: { backgroundColor: colors.danger, color: '#fff' },
-  tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
-  tile: {
-    backgroundColor: '#fff',
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flexBasis: '47%',
-    flexGrow: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  tileLabel: { color: colors.muted, fontSize: 12, fontWeight: '600' },
-  tileValue: { color: colors.text, fontSize: 19, fontWeight: '700', marginTop: 2 },
-  tileSub: { color: colors.muted, fontSize: 12, marginTop: 2 },
   moneyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   moneyField: { flexBasis: '47%', flexGrow: 1 },
   fieldLabel: { color: colors.muted, fontSize: 13, fontWeight: '600', marginBottom: 4 },
@@ -1389,6 +1471,20 @@ const styles = StyleSheet.create({
   },
   removeBtnText: { color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 20 },
   title: { color: colors.text, fontSize: 22, fontWeight: '700', lineHeight: 28 },
+  nameRow: { alignItems: 'flex-start', flexDirection: 'row' },
+  nameTitle: { flex: 1, marginRight: spacing.sm },
+  nameEditRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  nameEditInput: { flex: 1, fontSize: 17 },
+  statRow: {
+    alignItems: 'center',
+    borderBottomColor: colors.divider,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 7,
+  },
+  statLabel: { color: colors.muted, flex: 1, fontSize: 14, marginRight: spacing.md },
+  statValue: { color: colors.text, fontSize: 15, fontWeight: '600' },
   viewer: { backgroundColor: '#000', flex: 1 },
   viewerTop: {
     alignItems: 'center',
