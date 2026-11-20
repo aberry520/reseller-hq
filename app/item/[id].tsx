@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Dimensions,
@@ -37,7 +37,6 @@ import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
 import { appliesMacBidFees, DEFAULT_EBAY_CONDITION, EBAY_CONDITIONS } from '../../src/lib/types';
 import type { Item } from '../../src/lib/types';
 import CategoryPicker from '../../src/components/CategoryPicker';
-import Dropdown from '../../src/components/Dropdown';
 import InfoButton from '../../src/components/InfoButton';
 import { Ionicons } from '@expo/vector-icons';
 import { ebayCategoryById } from '../../src/lib/ebay-categories';
@@ -52,6 +51,18 @@ const ALL_STATUSES: Item['status'][] = [
   'Return',
   'Trash Return',
   'Deleted',
+];
+
+// The item's journey across the top of the screen (mockup flow):
+// Draft → To List → Listed → Sold. "To List" is the app's Unlisted
+// status (blank in the sheet). Off-journey statuses (Trash, Return,
+// Trash Return, Deleted) are not steps — they stay available in the
+// Details status editor.
+const JOURNEY: { status: Item['status']; label: string }[] = [
+  { status: 'Draft', label: 'Draft' },
+  { status: 'Unlisted', label: 'To List' },
+  { status: 'Listed', label: 'Listed' },
+  { status: 'Sold', label: 'Sold' },
 ];
 
 const parseMoney = (s: string): number => {
@@ -108,6 +119,10 @@ export default function ItemScreen() {
   // Full-screen photo viewer: index into item.photos, null = closed.
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const viewerListRef = useRef<FlatList<string> | null>(null);
+  // Which photo the large preview shows (thumbnail strip selection).
+  const [photoIndex, setPhotoIndex] = useState(0);
+  // Which Details row is expanded for editing, if any (accordion).
+  const [openField, setOpenField] = useState<string | null>(null);
   // Editable money fields, mirroring the spreadsheet columns.
   const [cost, setCost] = useState('');
   const [estShipStr, setEstShipStr] = useState('');
@@ -127,6 +142,8 @@ export default function ItemScreen() {
     setFeesStr(moneyStr(item.fees));
     setShipStr(moneyStr(item.shipping));
     setSoldDateStr(item.dateSold);
+    setPhotoIndex(0);
+    setOpenField(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item?.id]);
 
@@ -282,6 +299,13 @@ export default function ItemScreen() {
   const actualProfit = item.soldPrice > 0 ? item.soldPrice - allIn - item.fees - item.shipping : 0;
   const actualMargin = item.soldPrice > 0 ? (actualProfit / item.soldPrice) * 100 : 0;
   const actualRevenue = item.soldPrice > 0 ? item.soldPrice - item.fees - item.shipping : 0;
+  // Journey stepper position (-1 when the item is in an off-journey
+  // status like Trash or Deleted) and the photo the large preview
+  // shows (the selected thumbnail, clamped to what exists).
+  const journeyIndex = JOURNEY.findIndex((s) => s.status === item.status);
+  const selPhoto = displayPhotos.length === 0 ? 0 : Math.min(photoIndex, displayPhotos.length - 1);
+  const toggleField = (field: string) =>
+    setOpenField((cur) => (cur === field ? null : field));
 
   // Margin calculator lives on its own screen now (Calculator, from the
   // inventory footer) — it is a generic tool, not tied to this item.
@@ -316,6 +340,7 @@ export default function ItemScreen() {
   };
 
   const appendPhotos = (uris: string[]) => {
+    const firstNew = item.photos.length;
     const photos = [...item.photos, ...uris];
     const next = {
       ...item,
@@ -328,6 +353,8 @@ export default function ItemScreen() {
     };
     updateItem(item.id, next);
     setItem(next);
+    // Show the first photo just added in the large preview.
+    setPhotoIndex(firstNew);
     // Upload the new photos to Drive automatically.
     void autoUpload(next);
   };
@@ -573,16 +600,26 @@ export default function ItemScreen() {
     updateItem(item.id, next);
     setItem(next);
     setViewerIndex(0);
+    setPhotoIndex(0);
     viewerListRef.current?.scrollToIndex({ index: 0, animated: false });
   };
 
   // Marking an item Sold opens the sold-details prompt (sold price, fees,
   // shipping, date sold) instead of flipping the status on its own. Tapping
   // Sold again on an already-sold item reopens it to edit the details.
+  // A fresh sale is pre-filled so the common case is one tap to save:
+  // sold price from the list (suggested eBay) price, fees at the standard
+  // eBay rate, shipping at the estimate.
   const openSoldModal = () => {
-    setSoldStr(moneyStr(item.soldPrice));
-    setFeesStr(moneyStr(item.fees));
-    setShipStr(moneyStr(item.shipping));
+    if (item.soldPrice > 0) {
+      setSoldStr(moneyStr(item.soldPrice));
+      setFeesStr(moneyStr(item.fees));
+      setShipStr(moneyStr(item.shipping));
+    } else {
+      setSoldStr(moneyStr(suggested));
+      setFeesStr(moneyStr(Math.round(suggested * settings.ebayFeePct * 100) / 100));
+      setShipStr(moneyStr(item.estShip));
+    }
     setSoldDateStr(item.dateSold || new Date().toLocaleDateString('en-US'));
     setSoldModalVisible(true);
   };
@@ -613,6 +650,42 @@ export default function ItemScreen() {
     setSoldModalVisible(false);
     setStatusNote(`✓ Sold for ${formatMoney(soldPrice)}`);
     setTimeout(() => setStatusNote(''), 3000);
+  };
+
+  // Undo a sale (marked sold by mistake, or the sale fell through): the
+  // item goes back to Listed and the sale figures are cleared, in the
+  // app and the sheet.
+  const undoSale = () => {
+    Alert.alert(
+      'Undo this sale?',
+      'The item goes back to Listed and the sold price, fees, shipping, and date sold are cleared. This updates the sheet too.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Undo sale',
+          style: 'destructive',
+          onPress: () => {
+            const next = {
+              ...item,
+              status: 'Listed' as const,
+              soldPrice: 0,
+              fees: 0,
+              shipping: 0,
+              dateSold: '',
+              profit: 0,
+              revenue: 0,
+              profitMargin: '',
+            };
+            setStatus(item.id, 'Listed');
+            updateItem(item.id, next);
+            setItem(next);
+            pushItemsToSheetLive([next]);
+            setStatusNote('✓ Sale undone — back to Listed');
+            setTimeout(() => setStatusNote(''), 3000);
+          },
+        },
+      ],
+    );
   };
 
   const changeStatus = (status: Item['status']) => {
@@ -726,7 +799,7 @@ export default function ItemScreen() {
   };
 
   return (
-    <>
+    <View style={styles.screen}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={[
@@ -771,51 +844,114 @@ export default function ItemScreen() {
         {item.datePurchased || '—'}
       </Text>
 
+      <View style={styles.stepper}>
+        {JOURNEY.map((step, i) => {
+          const state =
+            journeyIndex === -1 || i > journeyIndex
+              ? 'todo'
+              : i < journeyIndex
+                ? 'done'
+                : 'current';
+          return (
+            <Fragment key={step.status}>
+              {i > 0 && (
+                <View style={[styles.stepLine, journeyIndex >= i && styles.stepLineDone]} />
+              )}
+              <Pressable
+                style={styles.step}
+                onPress={() => changeStatus(step.status)}
+                hitSlop={{ top: 6, bottom: 6, left: 2, right: 2 }}
+                accessibilityLabel={`Move to ${step.label}`}
+              >
+                <View
+                  style={[
+                    styles.stepDot,
+                    state === 'done' && styles.stepDotDone,
+                    state === 'current' && styles.stepDotCurrent,
+                  ]}
+                >
+                  {state === 'done' ? (
+                    <Ionicons name="checkmark" size={14} color="#fff" />
+                  ) : (
+                    <Text style={[styles.stepNum, state === 'current' && styles.stepNumCurrent]}>
+                      {i + 1}
+                    </Text>
+                  )}
+                </View>
+                <Text style={[styles.stepLabel, state === 'current' && styles.stepLabelCurrent]}>
+                  {step.label}
+                </Text>
+              </Pressable>
+            </Fragment>
+          );
+        })}
+      </View>
+      {statusNote !== '' && (
+        <Text style={[styles.note, styles.pass, styles.statusNoteBar]}>{statusNote}</Text>
+      )}
+
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <Text style={styles.cardHeaderTitle}>Photos ({displayPhotos.length})</Text>
           <InfoButton
             title="About photos"
             message={
-              'Photos are cropped square (1:1) for eBay. With the camera, adjust the crop when you take the photo; from the library you can pick several photos at once and each one is center-cropped square automatically. Take all your photos first, then remove backgrounds for all of them at once. Tap a photo to open it full-screen: swipe between photos, whiten the background, make it the cover, replace the original with the white-bg version, or delete it there.\n\nPhotos upload to Google Drive automatically — the white-bg version when there is one — so they show in the web version and the posting extension can use them. If an upload fails, a Retry button appears in this card.'
+              'Photos are cropped square (1:1) for eBay. With the camera, adjust the crop when you take the photo; from the library you can pick several photos at once and each one is center-cropped square automatically. Take all your photos first, then remove backgrounds for all of them at once. The thumbnails switch the large photo; tap the large photo to open it full-screen: swipe between photos, whiten the background, make it the cover, replace the original with the white-bg version, or delete it there.\n\nPhotos upload to Google Drive automatically — the white-bg version when there is one — so they show in the web version and the posting extension can use them. If an upload fails, a Retry button appears in this card.'
             }
           />
         </View>
         {displayPhotos.length === 0 && <Text style={styles.line}>No photos yet.</Text>}
-        <View style={styles.photoGrid}>
-          {displayPhotos.map((p, i) => (
-            <View key={p.uri || `photo-${i}`} style={styles.gridCell}>
-              <Pressable onPress={() => setViewerIndex(i)} accessibilityLabel={`Open photo ${i + 1} full screen`}>
-                <Image source={{ uri: p.uri }} style={styles.gridThumb} />
+        {displayPhotos.length > 0 && (
+          <>
+            <View style={styles.largePhotoWrap}>
+              <Pressable
+                onPress={() => setViewerIndex(selPhoto)}
+                accessibilityLabel="Open photo full screen"
+              >
+                <Image source={{ uri: displayPhotos[selPhoto].uri }} style={styles.largePhoto} />
               </Pressable>
-              {i === 0 && (
+              {selPhoto === 0 && (
                 <View style={styles.coverBadge}>
                   <Text style={styles.coverBadgeText}>Cover</Text>
                 </View>
               )}
-              {alignWhiteBg(item.photos, item.whiteBgPhotos)[i] && (
+              {alignWhiteBg(item.photos, item.whiteBgPhotos)[selPhoto] && (
                 <View style={styles.wbBadge}>
                   <Text style={styles.wbBadgeText}>WB</Text>
                 </View>
               )}
-              {p.uploaded && (
+              {displayPhotos[selPhoto].uploaded && (
                 <View style={[styles.wbBadge, styles.uploadedBadge]}>
                   <Text style={styles.uploadedBadgeText}>↑ Drive</Text>
                 </View>
               )}
-              {p.hasLocal && (
-                <Pressable
-                  style={styles.gridRemoveBtn}
-                  onPress={() => removePhoto(item.photos[i])}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  accessibilityLabel="Remove photo"
-                >
-                  <Text style={styles.removeBtnText}>✕</Text>
-                </Pressable>
-              )}
             </View>
-          ))}
-        </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.thumbStrip}
+            >
+              {displayPhotos.map((p, i) => (
+                <Pressable
+                  key={p.uri || `photo-${i}`}
+                  onPress={() => setPhotoIndex(i)}
+                  style={styles.thumbWrap}
+                  accessibilityLabel={`Show photo ${i + 1}`}
+                >
+                  <Image
+                    source={{ uri: p.uri }}
+                    style={[styles.thumb, i === selPhoto && styles.thumbSelected]}
+                  />
+                  {alignWhiteBg(item.photos, item.whiteBgPhotos)[i] ? (
+                    <View style={styles.thumbBadge}>
+                      <Text style={styles.thumbBadgeText}>WB</Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </>
+        )}
         {bgNote !== '' && <Text style={styles.note}>{bgNote}</Text>}
         {busy && bgNote === '' && <Text style={styles.note}>Removing background…</Text>}
         <View style={styles.btnRow}>
@@ -863,7 +999,7 @@ export default function ItemScreen() {
             title={isSold ? 'About this sale' : 'About the price calculator'}
             message={
               isSold
-                ? 'Revenue is what the sale brought in after fees and shipping (sold price − fees − shipping). Profit is revenue minus your all-in cost, and margin is profit as a share of the sold price. Tap Edit sale to change the sold price, fees, shipping, or date.'
+                ? 'Revenue is what the sale brought in after fees and shipping (sold price − fees − shipping). Profit is revenue minus your all-in cost, and margin is profit as a share of the sold price. Tap Edit sale in the bar at the bottom to change the sold price, fees, shipping, or date. Undo sale at the bottom of this card sends the item back to Listed and clears the sale.'
                 : 'Type a cost and an estimated shipping amount and the prices update as you type — they save automatically when you leave a field. Suggested eBay price targets a 30% margin after the 13.6% eBay fee; Min eBay price is break-even on margin; the Facebook price is the suggested price minus shipping and fees, rounded up to the nearest $5. If the item came from MAC.BID, turn on the MAC.BID switch and enter the bid — the all-in cost is (bid × 1.15 + $3) × 1.07.'
             }
           />
@@ -912,8 +1048,8 @@ export default function ItemScreen() {
                 <Text style={styles.statValue}>{actualMargin.toFixed(1)}%</Text>
               </View>
             </View>
-            <Pressable style={styles.btn} onPress={openSoldModal}>
-              <Text style={styles.btnText}>Edit sale</Text>
+            <Pressable style={styles.undoBtn} onPress={undoSale} hitSlop={{ top: 6, bottom: 6 }}>
+              <Text style={styles.undoText}>Undo sale</Text>
             </Pressable>
           </>
         ) : (
@@ -993,12 +1129,6 @@ export default function ItemScreen() {
                 <Text style={styles.statValue}>{(marginAtSuggested * 100).toFixed(1)}%</Text>
               </View>
             </View>
-            <Pressable
-              style={StyleSheet.flatten([styles.btn, styles.soldBtn])}
-              onPress={openSoldModal}
-            >
-              <Text style={styles.btnText}>Mark as Sold</Text>
-            </Pressable>
           </>
         )}
       </View>
@@ -1028,81 +1158,154 @@ export default function ItemScreen() {
         )}
         {detailsOpen && (
           <>
-            <Text style={styles.label}>Status</Text>
-            <Dropdown
-              value={item.status}
-              options={ALL_STATUSES.filter((s) => s !== 'Sold')}
-              onSelect={(v) => changeStatus(v as Item['status'])}
-            />
-            {isSold && (
-              <Text style={styles.note}>
-                Sold — edit the sale in the Sale card above, or pick another status here to move
-                it back.
-              </Text>
-            )}
-            {statusNote !== '' && <Text style={[styles.note, styles.pass]}>{statusNote}</Text>}
-            <Text style={styles.label}>Location</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Shelf, bin, garage…"
-              value={location}
-              onChangeText={setLocation}
-              returnKeyType="done"
-            />
-            <Text style={styles.label}>Place of purchase</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="MAC.BID, Goodwill, Facebook…"
-              value={place}
-              onChangeText={setPlace}
-              returnKeyType="done"
-            />
-            <DateField label="Date purchased" value={datePurchased} onChange={setDatePurchased} />
-            <DateField label="Date listed" value={dateListed} onChange={setDateListed} />
-            {item.notes ? <Text style={styles.line}>Notes: {item.notes}</Text> : null}
-            <Text style={styles.label}>eBay category</Text>
-            <Pressable
-              style={styles.catPick}
-              onPress={() => setCatPickerVisible(true)}
-              hitSlop={{ top: 4, bottom: 4 }}
-            >
-              <Text style={styles.catPickText} numberOfLines={2}>
-                {ebayCategory ? ebayCategory.path : ebayCategoryId.trim() !== '' ? `ID ${ebayCategoryId.trim()} (not in the 2026 tree)` : 'Tap to search eBay categories'}
-              </Text>
-              <Text style={styles.catPickId}>
-                {ebayCategory ? `ID ${ebayCategory.id}` : ebayCategoryId.trim() !== '' ? 'Tap to search, or type an ID below' : 'Search by keyword, e.g. lawn mower'}
-              </Text>
+            <Pressable style={styles.detailRow} onPress={() => toggleField('status')} hitSlop={{ top: 4, bottom: 4 }}>
+              <Text style={styles.detailLabel}>Status</Text>
+              <Text style={styles.detailValue} numberOfLines={1}>{item.status}</Text>
+              <Ionicons name={openField === 'status' ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} />
             </Pressable>
-            <TextInput
-              style={styles.input}
-              placeholder="Or type a category ID directly"
-              placeholderTextColor={colors.muted}
-              value={ebayCategoryId}
-              onChangeText={(v) => setEbayCategoryId(v.replace(/[^0-9]/g, ''))}
-              keyboardType="number-pad"
-              returnKeyType="done"
-            />
-            <CategoryPicker
-              visible={catPickerVisible}
-              initialQuery={cleanName(item.name)}
-              onSelect={(cat: EbayCategory) => setEbayCategoryId(cat.id)}
-              onClose={() => setCatPickerVisible(false)}
-            />
-            <Text style={styles.label}>eBay condition</Text>
-            <Dropdown
-              value={ebayCondition}
-              options={[...EBAY_CONDITIONS]}
-              onSelect={setEbayCondition}
-            />
+            {openField === 'status' && (
+              <View style={styles.detailEditor}>
+                {ALL_STATUSES.filter((s) => s !== 'Sold').map((s) => (
+                  <Pressable
+                    key={s}
+                    style={styles.optRow}
+                    onPress={() => {
+                      changeStatus(s);
+                      setOpenField(null);
+                    }}
+                    hitSlop={{ top: 4, bottom: 4 }}
+                  >
+                    <Text style={[styles.optText, item.status === s && styles.optTextActive]}>{s}</Text>
+                    {item.status === s && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                  </Pressable>
+                ))}
+                {isSold && (
+                  <Text style={styles.note}>
+                    Sold — edit the sale with Edit sale in the bottom bar, or pick another status
+                    here to move it back.
+                  </Text>
+                )}
+                <Text style={styles.note}>
+                  Sold is not in this list on purpose — use Mark as Sold so the sale details are
+                  recorded.
+                </Text>
+              </View>
+            )}
+            <Pressable style={styles.detailRow} onPress={() => toggleField('location')} hitSlop={{ top: 4, bottom: 4 }}>
+              <Text style={styles.detailLabel}>Location</Text>
+              <Text style={styles.detailValue} numberOfLines={1}>{location || 'Not set'}</Text>
+              <Ionicons name={openField === 'location' ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} />
+            </Pressable>
+            {openField === 'location' && (
+              <View style={styles.detailEditor}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Shelf, bin, garage…"
+                  value={location}
+                  onChangeText={setLocation}
+                  returnKeyType="done"
+                />
+              </View>
+            )}
+            <Pressable style={styles.detailRow} onPress={() => toggleField('place')} hitSlop={{ top: 4, bottom: 4 }}>
+              <Text style={styles.detailLabel}>Place of purchase</Text>
+              <Text style={styles.detailValue} numberOfLines={1}>{place || 'Not set'}</Text>
+              <Ionicons name={openField === 'place' ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} />
+            </Pressable>
+            {openField === 'place' && (
+              <View style={styles.detailEditor}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="MAC.BID, Goodwill, Facebook…"
+                  value={place}
+                  onChangeText={setPlace}
+                  returnKeyType="done"
+                />
+              </View>
+            )}
+            <Pressable style={styles.detailRow} onPress={() => toggleField('datePurchased')} hitSlop={{ top: 4, bottom: 4 }}>
+              <Text style={styles.detailLabel}>Date purchased</Text>
+              <Text style={styles.detailValue} numberOfLines={1}>{datePurchased || 'Not set'}</Text>
+              <Ionicons name={openField === 'datePurchased' ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} />
+            </Pressable>
+            {openField === 'datePurchased' && (
+              <View style={styles.detailEditor}>
+                <DateField label="Date purchased" value={datePurchased} onChange={setDatePurchased} />
+              </View>
+            )}
+            <Pressable style={styles.detailRow} onPress={() => toggleField('dateListed')} hitSlop={{ top: 4, bottom: 4 }}>
+              <Text style={styles.detailLabel}>Date listed</Text>
+              <Text style={styles.detailValue} numberOfLines={1}>{dateListed || 'Not set'}</Text>
+              <Ionicons name={openField === 'dateListed' ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} />
+            </Pressable>
+            {openField === 'dateListed' && (
+              <View style={styles.detailEditor}>
+                <DateField label="Date listed" value={dateListed} onChange={setDateListed} />
+              </View>
+            )}
+            <Pressable style={styles.detailRow} onPress={() => toggleField('category')} hitSlop={{ top: 4, bottom: 4 }}>
+              <Text style={styles.detailLabel}>eBay category</Text>
+              <Text style={styles.detailValue} numberOfLines={1}>
+                {ebayCategory ? ebayCategory.name : ebayCategoryId.trim() !== '' ? `ID ${ebayCategoryId.trim()}` : 'Not set'}
+              </Text>
+              <Ionicons name={openField === 'category' ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} />
+            </Pressable>
+            {openField === 'category' && (
+              <View style={styles.detailEditor}>
+                <Pressable
+                  style={styles.catPick}
+                  onPress={() => setCatPickerVisible(true)}
+                  hitSlop={{ top: 4, bottom: 4 }}
+                >
+                  <Text style={styles.catPickText} numberOfLines={2}>
+                    {ebayCategory ? ebayCategory.path : ebayCategoryId.trim() !== '' ? `ID ${ebayCategoryId.trim()} (not in the 2026 tree)` : 'Tap to search eBay categories'}
+                  </Text>
+                  <Text style={styles.catPickId}>
+                    {ebayCategory ? `ID ${ebayCategory.id}` : ebayCategoryId.trim() !== '' ? 'Tap to search, or type an ID below' : 'Search by keyword, e.g. lawn mower'}
+                  </Text>
+                </Pressable>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Or type a category ID directly"
+                  placeholderTextColor={colors.muted}
+                  value={ebayCategoryId}
+                  onChangeText={(v) => setEbayCategoryId(v.replace(/[^0-9]/g, ''))}
+                  keyboardType="number-pad"
+                  returnKeyType="done"
+                />
+                <CategoryPicker
+                  visible={catPickerVisible}
+                  initialQuery={cleanName(item.name)}
+                  onSelect={(cat: EbayCategory) => setEbayCategoryId(cat.id)}
+                  onClose={() => setCatPickerVisible(false)}
+                />
+                {ebayCategoryId.trim() === '' && (
+                  <Text style={styles.note}>
+                    Set a category before sending this item to eBay drafts — eBay requires one.
+                  </Text>
+                )}
+              </View>
+            )}
+            <Pressable style={styles.detailRow} onPress={() => toggleField('condition')} hitSlop={{ top: 4, bottom: 4 }}>
+              <Text style={styles.detailLabel}>eBay condition</Text>
+              <Text style={styles.detailValue} numberOfLines={1}>{ebayCondition}</Text>
+              <Ionicons name={openField === 'condition' ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} />
+            </Pressable>
+            {openField === 'condition' && (
+              <View style={styles.detailEditor}>
+                {EBAY_CONDITIONS.map((c) => (
+                  <Pressable key={c} style={styles.optRow} onPress={() => setEbayCondition(c)} hitSlop={{ top: 4, bottom: 4 }}>
+                    <Text style={[styles.optText, ebayCondition === c && styles.optTextActive]}>{c}</Text>
+                    {ebayCondition === c && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                  </Pressable>
+                ))}
+              </View>
+            )}
+            {item.notes ? <Text style={styles.line}>Notes: {item.notes}</Text> : null}
             <Pressable style={styles.btn} onPress={saveDetails}>
               <Text style={styles.btnText}>Save details</Text>
             </Pressable>
             {detailsNote !== '' && <Text style={[styles.note, styles.pass]}>{detailsNote}</Text>}
-            {ebayCategoryId.trim() === '' && (
-              <Text style={styles.note}>
-                Set a category before sending this item to eBay drafts — eBay requires one.
-              </Text>
-            )}
             {item.status === 'Deleted' && (
               <Text style={styles.note}>
                 This item is deleted — it is hidden from the list and kept in the sheet. Tap
@@ -1135,6 +1338,42 @@ export default function ItemScreen() {
         </Pressable>
       )}
     </ScrollView>
+
+    <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.sm }]}>
+      {isSold ? (
+        <>
+          <View style={styles.barInfo}>
+            <Text style={styles.barLabel}>Revenue</Text>
+            <Text style={styles.barValue}>{formatMoney(actualRevenue)}</Text>
+            <Text style={styles.barSub}>
+              profit {formatMoney(actualProfit)} · margin {actualMargin.toFixed(1)}%
+            </Text>
+          </View>
+          <Pressable
+            style={StyleSheet.flatten([styles.btn, styles.barBtn])}
+            onPress={openSoldModal}
+          >
+            <Text style={styles.btnText}>Edit sale</Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <View style={styles.barInfo}>
+            <Text style={styles.barLabel}>Projected profit</Text>
+            <Text style={styles.barValue}>{formatMoney(profitAtSuggested)}</Text>
+            <Text style={styles.barSub}>
+              {(marginAtSuggested * 100).toFixed(1)}% margin at the suggested price
+            </Text>
+          </View>
+          <Pressable
+            style={StyleSheet.flatten([styles.btn, styles.soldBtn, styles.barBtn])}
+            onPress={openSoldModal}
+          >
+            <Text style={styles.btnText}>Mark as Sold</Text>
+          </Pressable>
+        </>
+      )}
+    </View>
 
     <Modal
       visible={viewerIndex !== null}
@@ -1255,20 +1494,22 @@ export default function ItemScreen() {
     <Modal
       visible={soldModalVisible}
       animationType="slide"
+      transparent
       onRequestClose={() => setSoldModalVisible(false)}
     >
-      <ScrollView
-        style={styles.modalWrap}
-        contentContainerStyle={{
-          paddingTop: insets.top + spacing.lg,
-          paddingBottom: insets.bottom + spacing.xl,
-        }}
-        keyboardShouldPersistTaps="handled"
-      >
+      <View style={styles.sheetBackdrop}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => setSoldModalVisible(false)}
+          accessibilityLabel="Close"
+        />
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.md }]}>
+          <ScrollView keyboardShouldPersistTaps="handled">
         <Text style={styles.modalTitle}>{isSold ? 'Edit sale' : 'Mark as sold'}</Text>
         <Text style={styles.note}>
-          Enter what it actually sold for — the item will show the revenue from the sale instead
-          of the suggested price.
+          {isSold
+            ? 'Update what it actually sold for.'
+            : 'Pre-filled from the list price, fees at the standard eBay rate, and your shipping estimate — adjust anything that differs and save.'}
         </Text>
         <View style={styles.modalField}>
           <Text style={styles.fieldLabel}>Sold price</Text>
@@ -1326,9 +1567,11 @@ export default function ItemScreen() {
             <Text style={styles.btnText}>Cancel</Text>
           </Pressable>
         </View>
-      </ScrollView>
+          </ScrollView>
+        </View>
+      </View>
     </Modal>
-    </>
+    </View>
   );
 }
 
@@ -1351,13 +1594,103 @@ const styles = StyleSheet.create({
   deleteBtn: { backgroundColor: colors.danger, marginTop: spacing.lg },
   restoreBtn: { backgroundColor: colors.primary, marginTop: spacing.lg },
   soldBtn: { backgroundColor: '#1a7f37', marginTop: spacing.md, paddingVertical: 14 },
+  screen: { backgroundColor: colors.background, flex: 1 },
+  stepper: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.sm,
+  },
+  step: { alignItems: 'center', width: 60 },
+  stepDot: {
+    alignItems: 'center',
+    backgroundColor: colors.chip,
+    borderRadius: 13,
+    height: 26,
+    justifyContent: 'center',
+    width: 26,
+  },
+  stepDotDone: { backgroundColor: colors.success },
+  stepDotCurrent: { backgroundColor: colors.primary },
+  stepNum: { color: colors.muted, fontSize: 12, fontWeight: '700' },
+  stepNumCurrent: { color: '#fff' },
+  stepLabel: { color: colors.muted, fontSize: 12, fontWeight: '600', marginTop: 4 },
+  stepLabelCurrent: { color: colors.text },
+  stepLine: { backgroundColor: colors.border, flex: 1, height: 2, marginTop: 13 },
+  stepLineDone: { backgroundColor: colors.success },
+  statusNoteBar: { textAlign: 'center' },
+  largePhotoWrap: { marginTop: spacing.sm, position: 'relative' },
+  largePhoto: { aspectRatio: 1, borderRadius: radius.md, width: '100%' },
+  thumbStrip: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  thumbWrap: { position: 'relative' },
+  thumb: { borderRadius: radius.sm, height: 56, width: 56 },
+  thumbSelected: { borderColor: colors.primary, borderWidth: 2 },
+  thumbBadge: {
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 3,
+    bottom: 3,
+    left: 3,
+    paddingHorizontal: 3,
+    paddingVertical: 1,
+    position: 'absolute',
+  },
+  thumbBadgeText: { color: colors.text, fontSize: 8, fontWeight: '700' },
+  detailRow: {
+    alignItems: 'center',
+    borderBottomColor: colors.divider,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    minHeight: minTouchHeight,
+    paddingVertical: 10,
+  },
+  detailLabel: { color: colors.text, fontSize: 15, fontWeight: '600', width: 128 },
+  detailValue: { color: colors.muted, flex: 1, fontSize: 15, marginRight: 6, textAlign: 'right' },
+  detailEditor: {
+    borderBottomColor: colors.divider,
+    borderBottomWidth: 1,
+    paddingVertical: spacing.sm,
+  },
+  optRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 40,
+    paddingVertical: 6,
+  },
+  optText: { color: colors.text, fontSize: 15 },
+  optTextActive: { color: colors.primary, fontWeight: '700' },
+  bottomBar: {
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
+  barInfo: { flex: 1, marginRight: spacing.md },
+  barLabel: { color: colors.muted, fontSize: 12, fontWeight: '600' },
+  barValue: { color: colors.text, fontSize: 20, fontWeight: '800', lineHeight: 24 },
+  barSub: { color: colors.muted, fontSize: 12 },
+  barBtn: { marginRight: 0, marginTop: 0 },
+  undoBtn: { alignItems: 'center', marginTop: spacing.md, paddingVertical: 8 },
+  undoText: { color: colors.danger, fontSize: 15, fontWeight: '600' },
+  sheetBackdrop: { backgroundColor: 'rgba(0,0,0,0.45)', flex: 1, justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    maxHeight: '88%',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+  },
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,
     marginTop: spacing.lg,
     padding: spacing.lg,
   },
-  cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: spacing.sm },
   cardHeader: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -1365,7 +1698,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   cardHeaderTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  label: { color: colors.muted, fontSize: 14, fontWeight: '600', marginBottom: 4, marginTop: spacing.sm },
   catPick: {
     backgroundColor: colors.card,
     borderColor: colors.border,
@@ -1418,7 +1750,6 @@ const styles = StyleSheet.create({
   line: { color: colors.text, fontSize: 15, lineHeight: 21, marginTop: 6 },
   meta: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 6 },
   modalTitle: { color: colors.text, fontSize: 22, fontWeight: '700', lineHeight: 28, marginBottom: spacing.sm },
-  modalWrap: { backgroundColor: colors.background, flex: 1, paddingHorizontal: spacing.lg },
   // Plain stacked field for the sold modal — NOT moneyField, whose
   // flexGrow: 1 stretches each field to fill the screen in a column.
   modalField: { marginTop: spacing.md },
@@ -1427,9 +1758,6 @@ const styles = StyleSheet.create({
   notFoundText: { color: colors.text, fontSize: 16 },
   note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.sm },
   pass: { color: colors.success, fontWeight: '700' },
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
-  gridCell: { aspectRatio: 1, position: 'relative', width: '31%' },
-  gridThumb: { borderRadius: radius.sm, height: '100%', width: '100%' },
   coverBadge: {
     backgroundColor: colors.primary,
     borderRadius: 4,
@@ -1457,19 +1785,6 @@ const styles = StyleSheet.create({
     left: 44,
   },
   uploadedBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  gridRemoveBtn: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 14,
-    height: 28,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: 6,
-    top: 6,
-    width: 28,
-    zIndex: 1,
-  },
-  removeBtnText: { color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 20 },
   title: { color: colors.text, fontSize: 22, fontWeight: '700', lineHeight: 28 },
   nameRow: { alignItems: 'flex-start', flexDirection: 'row' },
   nameTitle: { flex: 1, marginRight: spacing.sm },
