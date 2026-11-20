@@ -16,8 +16,7 @@ import {
 import { Link, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
+import { pickPhotos } from '../../src/lib/photo-utils';
 import { getItem, getSettings, setStatus, updateItem } from '../../src/lib/db';
 import { deletePhotoFromDrive, isSyncConfigured, pushItemsToSheetLive, uploadItemPhotos } from '../../src/lib/sync';
 import { cleanName, photoUriAt } from '../../src/lib/listing';
@@ -112,6 +111,8 @@ export default function ItemScreen() {
   const [place, setPlace] = useState('');
   const [datePurchased, setDatePurchased] = useState('');
   const [dateListed, setDateListed] = useState('');
+  const [researchPriceStr, setResearchPriceStr] = useState('');
+  const [notesText, setNotesText] = useState('');
   // Item name editing happens inline in the header (pencil icon).
   const [editingName, setEditingName] = useState(false);
   const [nameText, setNameText] = useState('');
@@ -142,6 +143,7 @@ export default function ItemScreen() {
     setFeesStr(moneyStr(item.fees));
     setShipStr(moneyStr(item.shipping));
     setSoldDateStr(item.dateSold);
+    setResearchPriceStr(moneyStr(item.researchPrice));
     setPhotoIndex(0);
     setOpenField(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -158,6 +160,7 @@ export default function ItemScreen() {
       setPlace(it.place);
       setDatePurchased(it.datePurchased);
       setDateListed(it.dateListed);
+      setNotesText(it.notes);
     }
   }, [id]);
 
@@ -310,35 +313,6 @@ export default function ItemScreen() {
   // Margin calculator lives on its own screen now (Calculator, from the
   // inventory footer) — it is a generic tool, not tied to this item.
 
-  // Center-crop a picked photo to square (1:1) — eBay displays best
-  // with square images. The camera picker already shows a square crop
-  // screen; this guarantees the result is square either way, and it is
-  // the only crop for library picks (the crop UI can't be shown when
-  // several photos are picked at once). If the crop ever fails, keep
-  // the original so the photo is never lost.
-  const squareCrop = async (asset: ImagePicker.ImagePickerAsset): Promise<string> => {
-    try {
-      const side = Math.min(asset.width, asset.height);
-      const cropped = await ImageManipulator.manipulateAsync(
-        asset.uri,
-        [
-          {
-            crop: {
-              originX: Math.round((asset.width - side) / 2),
-              originY: Math.round((asset.height - side) / 2),
-              width: side,
-              height: side,
-            },
-          },
-        ],
-        { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG },
-      );
-      return cropped.uri;
-    } catch {
-      return asset.uri;
-    }
-  };
-
   const appendPhotos = (uris: string[]) => {
     const firstNew = item.photos.length;
     const photos = [...item.photos, ...uris];
@@ -360,34 +334,11 @@ export default function ItemScreen() {
   };
 
   const takePhoto = async (fromCamera: boolean) => {
-    if (fromCamera) {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        quality: 0.85,
-        // Show the crop screen at capture time, locked to square (1:1)
-        // for eBay, so the framing can be adjusted before the photo is
-        // saved.
-        allowsEditing: true,
-        aspect: [1, 1],
-      });
-      if (result.canceled || !result.assets?.[0]) return;
-      appendPhotos([await squareCrop(result.assets[0])]);
-      return;
-    }
-    // Library: pick as many photos as needed in one go — handy when
-    // the pictures were taken earlier with the camera app. Each one is
-    // center-cropped to square by squareCrop.
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.85,
-      allowsMultipleSelection: true,
-    });
-    if (result.canceled || !result.assets?.length) return;
-    const uris: string[] = [];
-    for (const asset of result.assets) {
-      uris.push(await squareCrop(asset));
-    }
-    appendPhotos(uris);
+    // Picking + square-cropping is shared with the Add Item flow
+    // (src/lib/photo-utils) so photos are captured the same way in
+    // both places.
+    const uris = await pickPhotos(fromCamera);
+    if (uris.length > 0) appendPhotos(uris);
   };
 
   // Batch background removal: send every photo that does not yet have a
@@ -739,6 +690,8 @@ export default function ItemScreen() {
       place: place.trim(),
       datePurchased: datePurchased.trim(),
       dateListed: dateListed.trim(),
+      researchPrice: parseMoney(researchPriceStr),
+      notes: notesText.trim(),
       ebayCategoryId: cat,
       ebayCondition: cond,
     };
@@ -1243,6 +1196,29 @@ export default function ItemScreen() {
                 <DateField label="Date listed" value={dateListed} onChange={setDateListed} />
               </View>
             )}
+            <Pressable style={styles.detailRow} onPress={() => toggleField('researchPrice')} hitSlop={{ top: 4, bottom: 4 }}>
+              <Text style={styles.detailLabel}>Research price</Text>
+              <Text style={styles.detailValue} numberOfLines={1}>
+                {parseMoney(researchPriceStr) > 0 ? formatMoney(parseMoney(researchPriceStr)) : 'Not set'}
+              </Text>
+              <Ionicons name={openField === 'researchPrice' ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} />
+            </Pressable>
+            {openField === 'researchPrice' && (
+              <View style={styles.detailEditor}>
+                <TextInput
+                  style={styles.input}
+                  value={researchPriceStr}
+                  onChangeText={setResearchPriceStr}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  returnKeyType="done"
+                />
+                <Text style={styles.note}>
+                  When set, the Suggested eBay price is based on this price instead of the margin
+                  math.
+                </Text>
+              </View>
+            )}
             <Pressable style={styles.detailRow} onPress={() => toggleField('category')} hitSlop={{ top: 4, bottom: 4 }}>
               <Text style={styles.detailLabel}>eBay category</Text>
               <Text style={styles.detailValue} numberOfLines={1}>
@@ -1301,7 +1277,23 @@ export default function ItemScreen() {
                 ))}
               </View>
             )}
-            {item.notes ? <Text style={styles.line}>Notes: {item.notes}</Text> : null}
+            <Pressable style={styles.detailRow} onPress={() => toggleField('notes')} hitSlop={{ top: 4, bottom: 4 }}>
+              <Text style={styles.detailLabel}>Notes</Text>
+              <Text style={styles.detailValue} numberOfLines={1}>{notesText.trim() || 'Not set'}</Text>
+              <Ionicons name={openField === 'notes' ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} />
+            </Pressable>
+            {openField === 'notes' && (
+              <View style={styles.detailEditor}>
+                <TextInput
+                  style={styles.input}
+                  value={notesText}
+                  onChangeText={setNotesText}
+                  multiline
+                  placeholder="Anything worth remembering about this item"
+                  placeholderTextColor={colors.muted}
+                />
+              </View>
+            )}
             <Pressable style={styles.btn} onPress={saveDetails}>
               <Text style={styles.btnText}>Save details</Text>
             </Pressable>

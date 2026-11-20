@@ -697,6 +697,11 @@ export function addItem(input: {
   place: string;
   datePurchased: string;
   notes: string;
+  // Optional: set from the Add Item form when known at intake.
+  researchPrice?: number;
+  // Optional: photos taken/picked during the Add Item flow. They are
+  // saved with the item; upload to Drive happens on the item screen.
+  photos?: string[];
   // Optional fixed id (sync restores): re-creates a deleted item with its
   // original RB-xxx so the sheet row keeps matching. Otherwise the next
   // free RB-xxx is assigned.
@@ -713,7 +718,7 @@ export function addItem(input: {
     estShip: input.estShip,
     suggestedPrice: 0,
     minPrice: 0,
-    researchPrice: 0,
+    researchPrice: input.researchPrice ?? 0,
     notes: input.notes,
     place: input.place,
     datePurchased: input.datePurchased,
@@ -729,8 +734,9 @@ export function addItem(input: {
     macBidFees: input.place.toLowerCase().includes('mac'),
     location: '',
     qrCode: qrFor(id),
-    photos: [],
-    whiteBgPhotos: [],
+    photos: input.photos ?? [],
+    // White-bg versions line up with photos by index ('' = none yet).
+    whiteBgPhotos: (input.photos ?? []).map(() => ''),
     createdAt: new Date().toISOString(),
     ebayCategoryId: '',
     ebayCondition: DEFAULT_EBAY_CONDITION,
