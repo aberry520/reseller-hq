@@ -4,13 +4,14 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import QRCode from 'react-native-qrcode-svg';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAllItems } from '../src/lib/db';
 import { labelsHtml, labelsPrintFragment, shortName, zplForItems } from '../src/lib/zpl';
 import { minTouchHeight, radius, spacing } from '../src/lib/ui';
-import { useThemedStyles } from '../src/lib/theme-context';
+import { useTheme, useThemedStyles } from '../src/lib/theme-context';
 import type { ThemeColors } from '../src/lib/themes';
 import type { Item } from '../src/lib/types';
 import { qrFor } from '../src/lib/types';
@@ -26,11 +27,19 @@ import { qrFor } from '../src/lib/types';
  *     the browser's own print dialog right on this page (no new tab) —
  *     pick the Zebra GC420T there. On the phone it makes a PDF file and
  *     opens the share sheet so it can be saved to Files.
- * Bulk: Select All (192), Select To List (59), Clear. Labels show the
- * short name (max 24 chars, no prices) + QR + RB-xxx.
+ * Bulk: a checkbox per status selects/deselects every item with that
+ * status (the screen opens with Draft + Unlisted — the "to list" pile —
+ * selected), plus Select all and Clear. Labels show the short name
+ * (max 24 chars, no prices) + QR + the item ID.
  */
+
+// Statuses in journey order, for the filter checkboxes. Deleted items
+// are never listed here, so Deleted is not offered.
+const STATUS_ORDER = ['Draft', 'Unlisted', 'Listed', 'Sold', 'Trash', 'Return', 'Trash Return'];
+
 export default function LabelsScreen() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [items, setItems] = useState<Item[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -59,13 +68,31 @@ export default function LabelsScreen() {
   };
 
   const selectAll = () => setSelected(new Set(items.map((it) => it.id)));
-  const selectToList = () =>
-    setSelected(
-      new Set(
-        items.filter((it) => it.status === 'Draft' || it.status === 'Unlisted').map((it) => it.id),
-      ),
-    );
   const clearSelection = () => setSelected(new Set());
+
+  // Status filter checkboxes: how many items carry each status, and
+  // whether every one of them is currently selected.
+  const statusCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const it of items) counts.set(it.status, (counts.get(it.status) ?? 0) + 1);
+    return counts;
+  }, [items]);
+
+  const statusAllSelected = (status: string) =>
+    items.filter((it) => it.status === status).every((it) => selected.has(it.id));
+
+  // Tapping a status checkbox selects every item with that status, or
+  // deselects them all when they are all selected already. Individual
+  // rows can still be toggled in the list below.
+  const toggleStatus = (status: string) => {
+    const ids = items.filter((it) => it.status === status).map((it) => it.id);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (ids.every((id) => next.has(id))) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  };
 
   const saveZpl = async () => {
     if (chosen.length === 0) {
@@ -161,14 +188,32 @@ export default function LabelsScreen() {
   return (
     <View style={[styles.container, { paddingTop: spacing.sm }]}>
       <Text style={styles.summary}>
-        {chosen.length} selected · defaults to Draft + Unlisted ({items.filter((i) => i.status === 'Draft' || i.status === 'Unlisted').length} items)
+        {chosen.length} of {items.length} selected
       </Text>
+      <Text style={styles.filterLabel}>Select by status</Text>
+      {STATUS_ORDER.filter((s) => (statusCounts.get(s) ?? 0) > 0).map((status) => {
+        const checked = statusAllSelected(status);
+        return (
+          <Pressable
+            key={status}
+            style={styles.filterRow}
+            onPress={() => toggleStatus(status)}
+            hitSlop={{ top: 4, bottom: 4 }}
+            accessibilityLabel={`Select all ${status} items`}
+          >
+            <Ionicons
+              name={checked ? 'checkbox' : 'square-outline'}
+              size={24}
+              color={checked ? colors.primary : colors.muted}
+            />
+            <Text style={styles.filterText}>{status === 'Unlisted' ? 'Unlisted (To List)' : status}</Text>
+            <Text style={styles.filterCount}>{statusCounts.get(status)}</Text>
+          </Pressable>
+        );
+      })}
       <View style={styles.btnRow}>
         <Pressable style={styles.btnSecondary} onPress={selectAll}>
           <Text style={styles.btnSecondaryText}>Select all ({items.length})</Text>
-        </Pressable>
-        <Pressable style={styles.btnSecondary} onPress={selectToList}>
-          <Text style={styles.btnSecondaryText}>Select To List</Text>
         </Pressable>
         <Pressable style={styles.btnSecondary} onPress={clearSelection}>
           <Text style={styles.btnSecondaryText}>Clear</Text>
@@ -248,6 +293,25 @@ const createStyles = (colors: ThemeColors) =>
     btnSecondaryText: { color: colors.text, fontSize: 14, fontWeight: '700' },
     check: { fontSize: 22, marginRight: spacing.sm },
     container: { backgroundColor: colors.background, flex: 1 },
+    filterCount: { color: colors.muted, fontSize: 14, fontWeight: '600' },
+    filterLabel: {
+      color: colors.muted,
+      fontSize: 13,
+      fontWeight: '700',
+      letterSpacing: 0.4,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
+      textTransform: 'uppercase',
+    },
+    filterRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.sm,
+      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.xs,
+    },
+    filterText: { color: colors.text, flex: 1, fontSize: 15, fontWeight: '600' },
     note: { color: colors.muted, fontSize: 13, lineHeight: 18, paddingBottom: 6, paddingHorizontal: spacing.lg },
     row: {
       alignItems: 'center',
