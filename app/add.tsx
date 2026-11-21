@@ -6,10 +6,13 @@ import { addItem } from '../src/lib/db';
 import { pushItemsToSheetLive } from '../src/lib/sync';
 import { pickPhotos } from '../src/lib/photo-utils';
 import DateField from '../src/components/DateField';
-import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
+import { minTouchHeight, radius, spacing } from '../src/lib/ui';
+import { useThemedStyles } from '../src/lib/theme-context';
+import type { ThemeColors } from '../src/lib/themes';
 
 export default function AddScreen() {
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(createStyles);
   const [name, setName] = useState('');
   const [purchase, setPurchase] = useState('');
   const [estShip, setEstShip] = useState('10');
@@ -119,47 +122,49 @@ export default function AddScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  btn: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    justifyContent: 'center',
-    marginTop: 20,
-    minHeight: 52,
-    paddingVertical: spacing.md,
-  },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  container: { backgroundColor: colors.background, flex: 1 },
-  content: { paddingHorizontal: spacing.lg },
-  field: { marginTop: spacing.lg },
-  hint: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.xs },
-  input: {
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    color: colors.text,
-    fontSize: 16,
-    marginTop: spacing.xs,
-    minHeight: minTouchHeight,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  label: { color: colors.text, fontSize: 15, fontWeight: '700', marginTop: spacing.lg },
-  largePhoto: { aspectRatio: 1, borderRadius: radius.md, marginTop: spacing.sm, width: '100%' },
-  photoBtn: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: minTouchHeight,
-    paddingVertical: spacing.md,
-  },
-  photoBtnRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
-  photoBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  removeText: { color: colors.danger, fontSize: 14, fontWeight: '600', marginTop: spacing.sm },
-  thumb: { borderRadius: radius.sm, height: 56, width: 56 },
-  thumbSelected: { borderColor: colors.primary, borderWidth: 2 },
-  thumbStrip: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    btn: {
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      borderRadius: radius.sm,
+      justifyContent: 'center',
+      marginTop: 20,
+      minHeight: 52,
+      paddingVertical: spacing.md,
+    },
+    btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
+    container: { backgroundColor: colors.background, flex: 1 },
+    content: { paddingHorizontal: spacing.lg },
+    field: { marginTop: spacing.lg },
+    hint: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.xs },
+    input: {
+      backgroundColor: colors.field,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      color: colors.text,
+      fontSize: 16,
+      marginTop: spacing.xs,
+      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+    },
+    label: { color: colors.text, fontSize: 15, fontWeight: '700', marginTop: spacing.lg },
+    largePhoto: { aspectRatio: 1, borderRadius: radius.md, marginTop: spacing.sm, width: '100%' },
+    photoBtn: {
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      borderRadius: radius.sm,
+      flex: 1,
+      justifyContent: 'center',
+      minHeight: minTouchHeight,
+      paddingVertical: spacing.md,
+    },
+    photoBtnRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+    photoBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+    removeText: { color: colors.danger, fontSize: 14, fontWeight: '600', marginTop: spacing.sm },
+    thumb: { borderRadius: radius.sm, height: 56, width: 56 },
+    thumbSelected: { borderColor: colors.primary, borderWidth: 2 },
+    thumbStrip: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  });

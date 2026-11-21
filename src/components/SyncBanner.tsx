@@ -12,11 +12,14 @@ import NetInfo from '@react-native-community/netinfo';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isOutOfSync, onOutOfSyncChange } from '../lib/db';
-import { colors, radius, spacing } from '../lib/ui';
+import { radius, spacing } from '../lib/ui';
+import { useThemedStyles } from '../lib/theme-context';
+import type { ThemeColors } from '../lib/themes';
 
 export default function SyncBanner() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(createStyles);
   const [visible, setVisible] = useState(false);
 
   const refresh = useCallback(() => {
@@ -53,23 +56,27 @@ export default function SyncBanner() {
   );
 }
 
-const styles = StyleSheet.create({
-  banner: {
-    alignItems: 'center',
-    backgroundColor: '#fff8e1',
-    borderBottomColor: '#e8c547',
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  btn: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  btnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  text: { color: colors.text, flex: 1, fontSize: 14, fontWeight: '600', lineHeight: 19 },
-});
+// The banner keeps its pale-yellow alert look in every theme, so its
+// text color is fixed dark (themed text would be near-white on dark
+// themes and unreadable on yellow); only the button follows the theme.
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    banner: {
+      alignItems: 'center',
+      backgroundColor: '#fff8e1',
+      borderBottomColor: '#e8c547',
+      borderBottomWidth: 1,
+      flexDirection: 'row',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+    },
+    btn: {
+      backgroundColor: colors.primary,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    btnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+    text: { color: '#1f2328', flex: 1, fontSize: 14, fontWeight: '600', lineHeight: 19 },
+  });

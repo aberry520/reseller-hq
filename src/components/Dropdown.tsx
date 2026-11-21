@@ -6,7 +6,9 @@ import { useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, minTouchHeight, radius, spacing } from '../lib/ui';
+import { minTouchHeight, radius, spacing } from '../lib/ui';
+import { useTheme, useThemedStyles } from '../lib/theme-context';
+import type { ThemeColors } from '../lib/themes';
 
 export default function Dropdown(props: {
   value: string;
@@ -15,6 +17,8 @@ export default function Dropdown(props: {
   placeholder?: string;
 }) {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -59,37 +63,38 @@ export default function Dropdown(props: {
   );
 }
 
-const styles = StyleSheet.create({
-  close: { color: colors.primary, fontSize: 16, fontWeight: '600' },
-  container: { backgroundColor: colors.background, flex: 1, paddingHorizontal: spacing.lg },
-  field: {
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    minHeight: minTouchHeight,
-    paddingHorizontal: 12,
-  },
-  fieldText: { color: colors.text, flex: 1, fontSize: 16 },
-  header: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  row: {
-    alignItems: 'center',
-    borderBottomColor: colors.divider,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    minHeight: minTouchHeight,
-    paddingVertical: spacing.sm,
-  },
-  rowText: { color: colors.text, fontSize: 16 },
-  rowTextActive: { color: colors.primary, fontWeight: '700' },
-  title: { color: colors.text, fontSize: 18, fontWeight: '700' },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    close: { color: colors.primary, fontSize: 16, fontWeight: '600' },
+    container: { backgroundColor: colors.background, flex: 1, paddingHorizontal: spacing.lg },
+    field: {
+      alignItems: 'center',
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      minHeight: minTouchHeight,
+      paddingHorizontal: 12,
+    },
+    fieldText: { color: colors.text, flex: 1, fontSize: 16 },
+    header: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: spacing.md,
+    },
+    row: {
+      alignItems: 'center',
+      borderBottomColor: colors.divider,
+      borderBottomWidth: 1,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      minHeight: minTouchHeight,
+      paddingVertical: spacing.sm,
+    },
+    rowText: { color: colors.text, fontSize: 16 },
+    rowTextActive: { color: colors.primary, fontWeight: '700' },
+    title: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  });

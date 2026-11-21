@@ -8,7 +8,9 @@ import { useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { searchEbayCategories, EbayCategory } from '../lib/ebay-categories';
-import { colors, minTouchHeight, radius, spacing } from '../lib/ui';
+import { minTouchHeight, radius, spacing } from '../lib/ui';
+import { useTheme, useThemedStyles } from '../lib/theme-context';
+import type { ThemeColors } from '../lib/themes';
 
 export default function CategoryPicker(props: {
   visible: boolean;
@@ -17,6 +19,8 @@ export default function CategoryPicker(props: {
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [query, setQuery] = useState(props.initialQuery);
   const results = useMemo(() => searchEbayCategories(query), [query]);
 
@@ -66,24 +70,25 @@ export default function CategoryPicker(props: {
   );
 }
 
-const styles = StyleSheet.create({
-  close: { color: colors.primary, fontSize: 16, fontWeight: '600' },
-  container: { backgroundColor: colors.background, flex: 1, paddingHorizontal: spacing.lg },
-  header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.md },
-  hint: { color: colors.muted, fontSize: 13, marginTop: spacing.sm },
-  input: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    color: colors.text,
-    fontSize: 16,
-    minHeight: minTouchHeight,
-    paddingHorizontal: 12,
-  },
-  row: { borderBottomColor: colors.divider, borderBottomWidth: 1, paddingVertical: spacing.sm },
-  rowId: { color: colors.muted, fontSize: 12, marginTop: 2 },
-  rowName: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  rowPath: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: 2 },
-  title: { color: colors.text, fontSize: 18, fontWeight: '700' },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    close: { color: colors.primary, fontSize: 16, fontWeight: '600' },
+    container: { backgroundColor: colors.background, flex: 1, paddingHorizontal: spacing.lg },
+    header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.md },
+    hint: { color: colors.muted, fontSize: 13, marginTop: spacing.sm },
+    input: {
+      backgroundColor: colors.field,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      color: colors.text,
+      fontSize: 16,
+      minHeight: minTouchHeight,
+      paddingHorizontal: 12,
+    },
+    row: { borderBottomColor: colors.divider, borderBottomWidth: 1, paddingVertical: spacing.sm },
+    rowId: { color: colors.muted, fontSize: 12, marginTop: 2 },
+    rowName: { color: colors.text, fontSize: 16, fontWeight: '600' },
+    rowPath: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: 2 },
+    title: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  });

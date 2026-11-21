@@ -35,13 +35,16 @@ import {
 } from '../src/lib/sync-diff';
 import { SHEET_TEMPLATE_B64 } from '../src/lib/sheet-template-b64';
 import { cleanName } from '../src/lib/listing';
-import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
+import { minTouchHeight, radius, spacing } from '../src/lib/ui';
+import { useThemedStyles } from '../src/lib/theme-context';
+import type { ThemeColors } from '../src/lib/themes';
 import { SyncSource } from '../src/lib/types';
 
 type Phase = 'idle' | 'checking' | 'ready' | 'applying' | 'done' | 'error';
 
 export default function SyncScreen() {
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(createStyles);
   const router = useRouter();
   const params = useLocalSearchParams();
   const autoCheck = params.auto === '1';
@@ -442,73 +445,74 @@ export default function SyncScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  applyBtn: { backgroundColor: '#1a7f37', marginTop: spacing.lg },
-  body: { color: colors.text, fontSize: 15, lineHeight: 21, marginTop: spacing.sm },
-  btn: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    justifyContent: 'center',
-    marginTop: spacing.md,
-    minHeight: 52,
-    paddingVertical: spacing.md,
-  },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  checkbox: {
-    alignItems: 'center',
-    borderColor: colors.border,
-    borderRadius: 6,
-    borderWidth: 2,
-    height: 24,
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-    width: 24,
-  },
-  checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
-  checkboxDisabled: {
-    alignItems: 'center',
-    borderColor: colors.border,
-    borderRadius: 6,
-    borderWidth: 2,
-    height: 24,
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-    width: 24,
-  },
-  checkMark: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  checkMarkDisabled: { color: colors.muted, fontSize: 15, fontWeight: '700' },
-  container: { backgroundColor: colors.background, flex: 1 },
-  dangerBtn: { backgroundColor: '#b42318' },
-  disabledBtn: { opacity: 0.5 },
-  error: { color: '#b42318', fontSize: 15, lineHeight: 21, marginTop: spacing.md },
-  freshBtn: { backgroundColor: '#57606a' },
-  freshSection: { borderTopColor: colors.border, borderTopWidth: 1, marginTop: spacing.xl, paddingTop: spacing.md },
-  meta: { color: colors.muted, fontSize: 14, marginTop: spacing.sm },
-  resultCard: {
-    backgroundColor: colors.chip,
-    borderRadius: radius.sm,
-    marginTop: spacing.md,
-    padding: spacing.md,
-  },
-  resultTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  row: { alignItems: 'center', flexDirection: 'row', minHeight: minTouchHeight, paddingVertical: 4 },
-  rowSub: { color: colors.muted, fontSize: 13, lineHeight: 18 },
-  rowText: { color: colors.text, fontSize: 15, lineHeight: 20 },
-  rowTextMuted: { color: colors.muted },
-  rowTextWrap: { flex: 1 },
-  section: { marginTop: spacing.lg },
-  sectionTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  sourceBtn: {
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flex: 1,
-    padding: spacing.md,
-  },
-  sourceBtnActive: { backgroundColor: colors.chip, borderColor: colors.primary },
-  sourceDesc: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: 2 },
-  sourceRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-  sourceTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  title: { color: colors.text, fontSize: 20, fontWeight: '700' },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    applyBtn: { backgroundColor: '#1a7f37', marginTop: spacing.lg },
+    body: { color: colors.text, fontSize: 15, lineHeight: 21, marginTop: spacing.sm },
+    btn: {
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      borderRadius: radius.sm,
+      justifyContent: 'center',
+      marginTop: spacing.md,
+      minHeight: 52,
+      paddingVertical: spacing.md,
+    },
+    btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
+    checkbox: {
+      alignItems: 'center',
+      borderColor: colors.border,
+      borderRadius: 6,
+      borderWidth: 2,
+      height: 24,
+      justifyContent: 'center',
+      marginRight: spacing.sm,
+      width: 24,
+    },
+    checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+    checkboxDisabled: {
+      alignItems: 'center',
+      borderColor: colors.border,
+      borderRadius: 6,
+      borderWidth: 2,
+      height: 24,
+      justifyContent: 'center',
+      marginRight: spacing.sm,
+      width: 24,
+    },
+    checkMark: { color: '#fff', fontSize: 15, fontWeight: '700' },
+    checkMarkDisabled: { color: colors.muted, fontSize: 15, fontWeight: '700' },
+    container: { backgroundColor: colors.background, flex: 1 },
+    dangerBtn: { backgroundColor: '#b42318' },
+    disabledBtn: { opacity: 0.5 },
+    error: { color: '#b42318', fontSize: 15, lineHeight: 21, marginTop: spacing.md },
+    freshBtn: { backgroundColor: '#57606a' },
+    freshSection: { borderTopColor: colors.border, borderTopWidth: 1, marginTop: spacing.xl, paddingTop: spacing.md },
+    meta: { color: colors.muted, fontSize: 14, marginTop: spacing.sm },
+    resultCard: {
+      backgroundColor: colors.chip,
+      borderRadius: radius.sm,
+      marginTop: spacing.md,
+      padding: spacing.md,
+    },
+    resultTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+    row: { alignItems: 'center', flexDirection: 'row', minHeight: minTouchHeight, paddingVertical: 4 },
+    rowSub: { color: colors.muted, fontSize: 13, lineHeight: 18 },
+    rowText: { color: colors.text, fontSize: 15, lineHeight: 20 },
+    rowTextMuted: { color: colors.muted },
+    rowTextWrap: { flex: 1 },
+    section: { marginTop: spacing.lg },
+    sectionTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+    sourceBtn: {
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      flex: 1,
+      padding: spacing.md,
+    },
+    sourceBtnActive: { backgroundColor: colors.chip, borderColor: colors.primary },
+    sourceDesc: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: 2 },
+    sourceRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+    sourceTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+    title: { color: colors.text, fontSize: 20, fontWeight: '700' },
+  });

@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../src/lib/ui';
+import { useTheme } from '../../src/lib/theme-context';
 
 // The four tab pages: Dashboard, Inventory, Tools, Settings.
 // Detail and tool screens (item, listing draft, add, scan, labels,
@@ -11,12 +11,14 @@ import { colors } from '../../src/lib/ui';
 // moment it is focused, which is what broke all navigation to them.)
 
 export default function TabsLayout() {
+  const { colors } = useTheme();
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: '#fff' },
-        headerTintColor: '#1f2328',
+        headerStyle: { backgroundColor: colors.background },
+        headerTintColor: colors.text,
         headerTitleStyle: { fontSize: 17, fontWeight: '700' },
+        tabBarStyle: { backgroundColor: colors.background, borderTopColor: colors.border },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
       }}

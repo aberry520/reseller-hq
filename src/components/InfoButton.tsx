@@ -4,9 +4,10 @@
 
 import { Alert, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../lib/ui';
+import { useTheme } from '../lib/theme-context';
 
 export default function InfoButton(props: { title: string; message: string }) {
+  const { colors } = useTheme();
   return (
     <Pressable
       style={styles.btn}

@@ -30,7 +30,9 @@ import {
 import { fetchExpenseRows, pushExpenseRows } from '../src/lib/sync';
 import DateField from '../src/components/DateField';
 import { formatMoney } from '../src/lib/pricing';
-import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
+import { minTouchHeight, radius, spacing } from '../src/lib/ui';
+import { useTheme, useThemedStyles } from '../src/lib/theme-context';
+import type { ThemeColors } from '../src/lib/themes';
 import type { Expense } from '../src/lib/types';
 
 function todayStr(): string {
@@ -39,6 +41,8 @@ function todayStr(): string {
 
 export default function ExpensesScreen() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -298,58 +302,60 @@ export default function ExpensesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  btn: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    justifyContent: 'center',
-    marginTop: spacing.md,
-    minHeight: 52,
-    paddingVertical: spacing.md,
-  },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  container: { backgroundColor: colors.background, flex: 1 },
-  content: { paddingHorizontal: spacing.lg },
-  dangerBtn: { backgroundColor: '#b42318', flex: 1 },
-  dateField: { marginTop: spacing.sm },
-  editRow: { flexDirection: 'row', gap: spacing.sm },
-  empty: { color: colors.muted, fontSize: 15, marginTop: spacing.sm },
-  input: {
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    color: colors.text,
-    fontSize: 16,
-    marginTop: spacing.sm,
-    minHeight: minTouchHeight,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  label: { color: colors.text, fontSize: 15, fontWeight: '700', marginTop: spacing.lg },
-  note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.sm },
-  row: {
-    alignItems: 'center',
-    borderBottomColor: colors.divider,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    minHeight: 60,
-    paddingVertical: spacing.sm,
-  },
-  rowAction: { marginLeft: spacing.sm, padding: spacing.xs },
-  rowMain: { flex: 1, marginRight: spacing.sm },
-  rowMeta: { color: colors.muted, fontSize: 13, marginTop: 2 },
-  rowName: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  rowPrice: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  rowSelected: { backgroundColor: colors.chip },
-  secondaryBtn: { backgroundColor: '#57606a', flex: 1 },
-  totalCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
-  },
-  totalLabel: { color: colors.muted, fontSize: 14, fontWeight: '600' },
-  totalMeta: { color: colors.muted, fontSize: 13, marginTop: spacing.xs },
-  totalValue: { color: colors.text, fontSize: 32, fontWeight: '800', marginTop: spacing.xs },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    btn: {
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      borderRadius: radius.sm,
+      justifyContent: 'center',
+      marginTop: spacing.md,
+      minHeight: 52,
+      paddingVertical: spacing.md,
+    },
+    btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
+    container: { backgroundColor: colors.background, flex: 1 },
+    content: { paddingHorizontal: spacing.lg },
+    dangerBtn: { backgroundColor: colors.danger, flex: 1 },
+    dateField: { marginTop: spacing.sm },
+    editRow: { flexDirection: 'row', gap: spacing.sm },
+    empty: { color: colors.muted, fontSize: 15, marginTop: spacing.sm },
+    input: {
+      backgroundColor: colors.field,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      color: colors.text,
+      fontSize: 16,
+      marginTop: spacing.sm,
+      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+    },
+    label: { color: colors.text, fontSize: 15, fontWeight: '700', marginTop: spacing.lg },
+    note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.sm },
+    row: {
+      alignItems: 'center',
+      borderBottomColor: colors.divider,
+      borderBottomWidth: 1,
+      flexDirection: 'row',
+      minHeight: 60,
+      paddingVertical: spacing.sm,
+    },
+    rowAction: { marginLeft: spacing.sm, padding: spacing.xs },
+    rowMain: { flex: 1, marginRight: spacing.sm },
+    rowMeta: { color: colors.muted, fontSize: 13, marginTop: 2 },
+    rowName: { color: colors.text, fontSize: 16, fontWeight: '600' },
+    rowPrice: { color: colors.text, fontSize: 16, fontWeight: '700' },
+    rowSelected: { backgroundColor: colors.chip },
+    secondaryBtn: { backgroundColor: colors.muted, flex: 1 },
+    totalCard: {
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.lg,
+    },
+    totalLabel: { color: colors.muted, fontSize: 14, fontWeight: '600' },
+    totalMeta: { color: colors.muted, fontSize: 13, marginTop: spacing.xs },
+    totalValue: { color: colors.text, fontSize: 32, fontWeight: '800', marginTop: spacing.xs },
+  });

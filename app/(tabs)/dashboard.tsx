@@ -36,7 +36,9 @@ import {
 import { fetchExpenseRows } from '../../src/lib/sync';
 import { formatMoney } from '../../src/lib/pricing';
 import DateField from '../../src/components/DateField';
-import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
+import { minTouchHeight, radius, spacing } from '../../src/lib/ui';
+import { useTheme, useThemedStyles } from '../../src/lib/theme-context';
+import type { ThemeColors } from '../../src/lib/themes';
 
 function money(v: number): string {
   return formatMoney(v);
@@ -72,6 +74,7 @@ function StatRow({
   bold?: boolean;
   tone?: Tone;
 }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.statRow}>
       <Text style={styles.statLabel}>{label}</Text>
@@ -98,6 +101,7 @@ function StatCard({
   accent: string;
   children: React.ReactNode;
 }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={[styles.card, { borderTopColor: accent, borderTopWidth: 4 }]}>
       <View style={styles.cardTitleRow}>
@@ -121,6 +125,7 @@ function Tile({
   accent: string;
   tone?: Tone;
 }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={[styles.tile, { borderTopColor: accent, borderTopWidth: 4 }]}>
       <Text style={styles.tileLabel}>{label}</Text>
@@ -139,6 +144,8 @@ function Tile({
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   // The range is a preset (This month / Last month / Last 3 months / Year
   // to date) or 'custom' once the start or end date is picked by hand.
   const [preset, setPreset] = useState<RangePreset | 'custom'>('thisMonth');
@@ -434,121 +441,122 @@ export default function DashboardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    marginTop: spacing.md,
-    padding: spacing.md,
-  },
-  cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  cardTitleRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, marginBottom: 4 },
-  container: { backgroundColor: colors.background, flex: 1 },
-  customField: { flex: 1 },
-  customRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
-  dot: { borderRadius: 5, height: 10, width: 10 },
-  dropdown: {
-    alignItems: 'center',
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    minHeight: minTouchHeight,
-    paddingHorizontal: spacing.md,
-  },
-  dropdownChevron: { color: colors.muted, fontSize: 16 },
-  dropdownText: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  heroBad: { backgroundColor: '#fdecea' },
-  heroCard: {
-    backgroundColor: colors.chip,
-    borderRadius: radius.md,
-    marginTop: spacing.md,
-    padding: spacing.lg,
-  },
-  heroGood: { backgroundColor: '#e6f4ea' },
-  heroLabel: { color: colors.muted, fontSize: 14, fontWeight: '600' },
-  heroNote: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.xs },
-  heroValue: { color: colors.text, fontSize: 34, fontWeight: '800', marginTop: 2 },
-  headerCard: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    marginTop: spacing.md,
-    padding: spacing.md,
-  },
-  headerRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
-  note: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.sm },
-  option: {
-    alignItems: 'center',
-    borderBottomColor: colors.divider,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    minHeight: minTouchHeight,
-    paddingVertical: spacing.sm,
-  },
-  optionActive: { backgroundColor: colors.card },
-  optionCheck: { color: colors.primary, fontSize: 16, fontWeight: '700' },
-  optionText: { color: colors.text, fontSize: 16 },
-  optionTextActive: { color: colors.primary, fontWeight: '700' },
-  refreshBtn: {
-    alignItems: 'center',
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    height: minTouchHeight,
-    justifyContent: 'center',
-    width: minTouchHeight,
-  },
-  sectionTitle: { color: colors.text, fontSize: 18, fontWeight: '700', marginTop: spacing.lg },
-  sheet: { backgroundColor: 'rgba(0,0,0,0.4)', flex: 1, justifyContent: 'flex-end' },
-  sheetCard: {
-    backgroundColor: colors.background,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: spacing.lg,
-  },
-  sheetTitle: { color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: spacing.sm },
-  cancelBtn: {
-    alignItems: 'center',
-    backgroundColor: colors.muted,
-    borderRadius: radius.sm,
-    marginTop: spacing.md,
-    minHeight: minTouchHeight,
-    paddingVertical: spacing.md,
-  },
-  cancelText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  statLabel: { color: colors.muted, flex: 1, fontSize: 15 },
-  statRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-  },
-  statValue: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  statValueBold: { fontWeight: '800' },
-  tile: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flexBasis: '48%',
-    flexGrow: 1,
-    padding: spacing.md,
-  },
-  tileGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  tileLabel: { color: colors.muted, fontSize: 13, fontWeight: '600' },
-  tileValue: { color: colors.text, fontSize: 20, fontWeight: '800', marginTop: 4 },
-  title: { color: colors.text, fontSize: 20, fontWeight: '700' },
-  valueBad: { color: colors.danger },
-  valueGood: { color: colors.success },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    card: {
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      marginTop: spacing.md,
+      padding: spacing.md,
+    },
+    cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+    cardTitleRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, marginBottom: 4 },
+    container: { backgroundColor: colors.background, flex: 1 },
+    customField: { flex: 1 },
+    customRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
+    dot: { borderRadius: 5, height: 10, width: 10 },
+    dropdown: {
+      alignItems: 'center',
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      flex: 1,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.md,
+    },
+    dropdownChevron: { color: colors.muted, fontSize: 16 },
+    dropdownText: { color: colors.text, fontSize: 16, fontWeight: '600' },
+    heroBad: { backgroundColor: '#fdecea' },
+    heroCard: {
+      backgroundColor: colors.chip,
+      borderRadius: radius.md,
+      marginTop: spacing.md,
+      padding: spacing.lg,
+    },
+    heroGood: { backgroundColor: '#e6f4ea' },
+    heroLabel: { color: colors.muted, fontSize: 14, fontWeight: '600' },
+    heroNote: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.xs },
+    heroValue: { color: colors.text, fontSize: 34, fontWeight: '800', marginTop: 2 },
+    headerCard: {
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      marginTop: spacing.md,
+      padding: spacing.md,
+    },
+    headerRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+    note: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.sm },
+    option: {
+      alignItems: 'center',
+      borderBottomColor: colors.divider,
+      borderBottomWidth: 1,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      minHeight: minTouchHeight,
+      paddingVertical: spacing.sm,
+    },
+    optionActive: { backgroundColor: colors.card },
+    optionCheck: { color: colors.primary, fontSize: 16, fontWeight: '700' },
+    optionText: { color: colors.text, fontSize: 16 },
+    optionTextActive: { color: colors.primary, fontWeight: '700' },
+    refreshBtn: {
+      alignItems: 'center',
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      height: minTouchHeight,
+      justifyContent: 'center',
+      width: minTouchHeight,
+    },
+    sectionTitle: { color: colors.text, fontSize: 18, fontWeight: '700', marginTop: spacing.lg },
+    sheet: { backgroundColor: 'rgba(0,0,0,0.4)', flex: 1, justifyContent: 'flex-end' },
+    sheetCard: {
+      backgroundColor: colors.background,
+      borderTopLeftRadius: radius.lg,
+      borderTopRightRadius: radius.lg,
+      padding: spacing.lg,
+    },
+    sheetTitle: { color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: spacing.sm },
+    cancelBtn: {
+      alignItems: 'center',
+      backgroundColor: colors.muted,
+      borderRadius: radius.sm,
+      marginTop: spacing.md,
+      minHeight: minTouchHeight,
+      paddingVertical: spacing.md,
+    },
+    cancelText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    statLabel: { color: colors.muted, flex: 1, fontSize: 15 },
+    statRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingVertical: 6,
+    },
+    statValue: { color: colors.text, fontSize: 16, fontWeight: '600' },
+    statValueBold: { fontWeight: '800' },
+    tile: {
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      flexBasis: '48%',
+      flexGrow: 1,
+      padding: spacing.md,
+    },
+    tileGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+      marginTop: spacing.md,
+    },
+    tileLabel: { color: colors.muted, fontSize: 13, fontWeight: '600' },
+    tileValue: { color: colors.text, fontSize: 20, fontWeight: '800', marginTop: 4 },
+    title: { color: colors.text, fontSize: 20, fontWeight: '700' },
+    valueBad: { color: colors.danger },
+    valueGood: { color: colors.success },
+  });

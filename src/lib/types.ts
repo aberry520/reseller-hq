@@ -113,6 +113,7 @@ export interface Settings {
   syncUrl: string; // Google Apps Script web app URL for sheet sync (blank = off)
   syncToken: string; // SYNC_TOKEN script property — the sync password
   syncSheet: string; // the sheet tab the sync reads/writes (default 'Inventory')
+  theme: string; // color theme name (see src/lib/themes.ts; default 'classic')
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -124,6 +125,7 @@ export const DEFAULT_SETTINGS: Settings = {
   syncUrl: '',
   syncToken: '',
   syncSheet: 'Inventory',
+  theme: 'classic',
 };
 
 export function normaliseStatus(raw: string): ItemStatus {

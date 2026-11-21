@@ -9,7 +9,9 @@ import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAllItems } from '../src/lib/db';
 import { labelsHtml, labelsPrintFragment, shortName, zplForItems } from '../src/lib/zpl';
-import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
+import { minTouchHeight, radius, spacing } from '../src/lib/ui';
+import { useThemedStyles } from '../src/lib/theme-context';
+import type { ThemeColors } from '../src/lib/themes';
 import type { Item } from '../src/lib/types';
 import { qrFor } from '../src/lib/types';
 
@@ -29,6 +31,7 @@ import { qrFor } from '../src/lib/types';
  */
 export default function LabelsScreen() {
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(createStyles);
   const [items, setItems] = useState<Item[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [zplPath, setZplPath] = useState('');
@@ -218,44 +221,45 @@ export default function LabelsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  btn: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: minTouchHeight,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  btnRow: { flexDirection: 'row', gap: spacing.sm, padding: spacing.lg },
-  btnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  btnSecondary: {
-    alignItems: 'center',
-    backgroundColor: colors.chip,
-    borderRadius: radius.sm,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: minTouchHeight,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.md,
-  },
-  btnSecondaryText: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  check: { fontSize: 22, marginRight: spacing.sm },
-  container: { backgroundColor: colors.background, flex: 1 },
-  note: { color: colors.muted, fontSize: 13, lineHeight: 18, paddingBottom: 6, paddingHorizontal: spacing.lg },
-  row: {
-    alignItems: 'center',
-    borderBottomColor: colors.divider,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    minHeight: 64,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  rowMain: { flex: 1, marginRight: spacing.sm },
-  rowMeta: { color: colors.muted, fontSize: 13, marginTop: 2 },
-  rowName: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  summary: { color: colors.text, fontSize: 14, fontWeight: '600', lineHeight: 20, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-});
+const createStyles = (colors: ThemeColors) =>
+    StyleSheet.create({
+    btn: {
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      borderRadius: radius.sm,
+      flex: 1,
+      justifyContent: 'center',
+      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+    },
+    btnRow: { flexDirection: 'row', gap: spacing.sm, padding: spacing.lg },
+    btnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+    btnSecondary: {
+      alignItems: 'center',
+      backgroundColor: colors.chip,
+      borderRadius: radius.sm,
+      flex: 1,
+      justifyContent: 'center',
+      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.md,
+    },
+    btnSecondaryText: { color: colors.text, fontSize: 14, fontWeight: '700' },
+    check: { fontSize: 22, marginRight: spacing.sm },
+    container: { backgroundColor: colors.background, flex: 1 },
+    note: { color: colors.muted, fontSize: 13, lineHeight: 18, paddingBottom: 6, paddingHorizontal: spacing.lg },
+    row: {
+      alignItems: 'center',
+      borderBottomColor: colors.divider,
+      borderBottomWidth: 1,
+      flexDirection: 'row',
+      minHeight: 64,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+    },
+    rowMain: { flex: 1, marginRight: spacing.sm },
+    rowMeta: { color: colors.muted, fontSize: 13, marginTop: 2 },
+    rowName: { color: colors.text, fontSize: 16, fontWeight: '600' },
+    summary: { color: colors.text, fontSize: 14, fontWeight: '600', lineHeight: 20, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  });

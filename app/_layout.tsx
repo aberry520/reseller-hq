@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { initDb } from '../src/lib/db';
+import { ThemeProvider, useTheme } from '../src/lib/theme-context';
 import SyncBanner from '../src/components/SyncBanner';
 
 // Root layout is a Stack. The (tabs) group holds the three tab pages
@@ -10,20 +11,16 @@ import SyncBanner from '../src/components/SyncBanner';
 // of the tabs with a back button, which is the standard expo-router
 // Tabs + Stack pattern.
 
-export default function RootLayout() {
-  useEffect(() => {
-    // Local-first: create tables and seed the 192 Purchase-sheet items on first run.
-    initDb();
-  }, []);
-
+function AppShell() {
+  const { colors, dark } = useTheme();
   return (
-    <SafeAreaProvider>
-      <StatusBar style="dark" />
+    <>
+      <StatusBar style={dark ? 'light' : 'dark'} />
       <SyncBanner />
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: '#fff' },
-          headerTintColor: '#1f2328',
+          headerStyle: { backgroundColor: colors.background },
+          headerTintColor: colors.text,
           headerTitleStyle: { fontSize: 17, fontWeight: '700' },
           // The back button otherwise reads "(tabs)" — the route name of
           // the tab group the detail screens push from.
@@ -40,6 +37,21 @@ export default function RootLayout() {
         <Stack.Screen name="sync" options={{ title: 'Sheet sync' }} />
         <Stack.Screen name="expenses" options={{ title: 'Expenses' }} />
       </Stack>
+    </>
+  );
+}
+
+export default function RootLayout() {
+  useEffect(() => {
+    // Local-first: create tables and seed the 192 Purchase-sheet items on first run.
+    initDb();
+  }, []);
+
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AppShell />
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

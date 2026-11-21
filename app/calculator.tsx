@@ -7,7 +7,9 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSettings } from '../src/lib/db';
 import { formatMoney, marginPct } from '../src/lib/pricing';
-import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
+import { minTouchHeight, radius, spacing } from '../src/lib/ui';
+import { useThemedStyles } from '../src/lib/theme-context';
+import type { ThemeColors } from '../src/lib/themes';
 
 function parseMoney(s: string): number {
   const n = parseFloat(s.replace(/[^0-9.]/g, ''));
@@ -16,6 +18,7 @@ function parseMoney(s: string): number {
 
 export default function CalculatorScreen() {
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(createStyles);
   const settings = getSettings();
   const [cost, setCost] = useState('');
   const [ship, setShip] = useState('');
@@ -131,59 +134,60 @@ export default function CalculatorScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  btn: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    justifyContent: 'center',
-    marginTop: spacing.md,
-    minHeight: minTouchHeight,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  calcBox: {
-    backgroundColor: '#fff',
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    marginTop: spacing.md,
-    padding: spacing.md,
-  },
-  calcMargin: { fontSize: 30, fontWeight: '800', lineHeight: 36 },
-  calcProfit: { color: colors.text, fontSize: 19, fontWeight: '700', marginTop: 2 },
-  card: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    margin: spacing.lg,
-    padding: spacing.lg,
-  },
-  cardTitle: { color: colors.text, fontSize: 17, fontWeight: '700' },
-  clearBtn: { backgroundColor: colors.muted },
-  container: { backgroundColor: colors.background, flex: 1 },
-  fail: { color: colors.danger, fontWeight: '700' },
-  fieldLabel: { color: colors.muted, fontSize: 13, fontWeight: '600', marginBottom: 4 },
-  input: {
-    backgroundColor: '#fff',
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    fontSize: 16,
-    minHeight: minTouchHeight,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  line: { color: colors.text, fontSize: 16, lineHeight: 24, marginTop: 2 },
-  moneyField: { flexBasis: '48%', flexGrow: 1 },
-  moneyGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-    marginTop: spacing.md,
-  },
-  note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.xs },
-  pass: { color: colors.success, fontWeight: '700' },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    btn: {
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      borderRadius: radius.sm,
+      justifyContent: 'center',
+      marginTop: spacing.md,
+      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    calcBox: {
+      backgroundColor: colors.field,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      marginTop: spacing.md,
+      padding: spacing.md,
+    },
+    calcMargin: { fontSize: 30, fontWeight: '800', lineHeight: 36 },
+    calcProfit: { color: colors.text, fontSize: 19, fontWeight: '700', marginTop: 2 },
+    card: {
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      margin: spacing.lg,
+      padding: spacing.lg,
+    },
+    cardTitle: { color: colors.text, fontSize: 17, fontWeight: '700' },
+    clearBtn: { backgroundColor: colors.muted },
+    container: { backgroundColor: colors.background, flex: 1 },
+    fail: { color: colors.danger, fontWeight: '700' },
+    fieldLabel: { color: colors.muted, fontSize: 13, fontWeight: '600', marginBottom: 4 },
+    input: {
+      backgroundColor: colors.field,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      fontSize: 16,
+      minHeight: minTouchHeight,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    line: { color: colors.text, fontSize: 16, lineHeight: 24, marginTop: 2 },
+    moneyField: { flexBasis: '48%', flexGrow: 1 },
+    moneyGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.md,
+      marginTop: spacing.md,
+    },
+    note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.xs },
+    pass: { color: colors.success, fontWeight: '700' },
+  });

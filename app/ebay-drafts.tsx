@@ -29,13 +29,16 @@ import { ebayDraftMissing } from '../src/lib/listing';
 import { formatMoney } from '../src/lib/pricing';
 import { DEFAULT_EBAY_CONDITION, EBAY_CONDITIONS } from '../src/lib/types';
 import type { Item } from '../src/lib/types';
-import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
+import { minTouchHeight, radius, spacing } from '../src/lib/ui';
+import { useThemedStyles } from '../src/lib/theme-context';
+import type { ThemeColors } from '../src/lib/themes';
 import CategoryPicker from '../src/components/CategoryPicker';
 import type { EbayCategory } from '../src/lib/ebay-categories';
 import { ebayCategoryById } from '../src/lib/ebay-categories';
 
 export default function EbayDraftsScreen() {
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(createStyles);
   const router = useRouter();
   const [items, setItems] = useState<Item[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -246,81 +249,82 @@ export default function EbayDraftsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  bulkBtn: {
-    backgroundColor: colors.chip,
-    borderRadius: radius.sm,
-    minHeight: minTouchHeight,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  bulkBtnText: { color: colors.text, fontSize: 15, fontWeight: '600' },
-  bulkRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-  catInput: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    color: colors.text,
-    fontSize: 15,
-    height: 40,
-    paddingHorizontal: 10,
-    width: 110,
-  },
-  catPick: {
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    height: 40,
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-    width: 110,
-  },
-  catPickText: { color: colors.text, fontSize: 13, fontWeight: '600' },
-  check: { color: colors.text, fontSize: 20, marginRight: spacing.sm },
-  condBtn: {
-    alignItems: 'center',
-    backgroundColor: colors.chip,
-    borderRadius: radius.sm,
-    height: 40,
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-    width: 110,
-  },
-  condText: { color: colors.text, fontSize: 13, fontWeight: '600' },
-  container: { backgroundColor: colors.background, flex: 1 },
-  count: { color: colors.muted, fontSize: 14, marginTop: spacing.sm },
-  editCol: { gap: 6 },
-  footer: { borderTopColor: colors.divider, borderTopWidth: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  intro: { color: colors.muted, fontSize: 14, lineHeight: 20 },
-  missing: { color: colors.danger, fontSize: 13, marginTop: 2 },
-  openBtn: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
-  openBtnText: { color: colors.muted, fontSize: 24 },
-  result: { color: colors.text, fontSize: 14, lineHeight: 20, marginTop: spacing.sm },
-  row: {
-    alignItems: 'center',
-    borderBottomColor: colors.divider,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  rowMain: { alignItems: 'center', flex: 1, flexDirection: 'row', minWidth: 0 },
-  rowMeta: { color: colors.muted, fontSize: 13, marginTop: 2 },
-  rowName: { color: colors.text, fontSize: 15, fontWeight: '600' },
-  rowText: { flex: 1, minWidth: 0 },
-  sendBtn: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    justifyContent: 'center',
-    minHeight: minTouchHeight,
-    paddingVertical: 12,
-  },
-  sendBtnDisabled: { opacity: 0.5 },
-  sendBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  top: { borderBottomColor: colors.divider, borderBottomWidth: 1, paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    bulkBtn: {
+      backgroundColor: colors.chip,
+      borderRadius: radius.sm,
+      minHeight: minTouchHeight,
+      justifyContent: 'center',
+      paddingHorizontal: 12,
+    },
+    bulkBtnText: { color: colors.text, fontSize: 15, fontWeight: '600' },
+    bulkRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+    catInput: {
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      color: colors.text,
+      fontSize: 15,
+      height: 40,
+      paddingHorizontal: 10,
+      width: 110,
+    },
+    catPick: {
+      alignItems: 'center',
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      height: 40,
+      justifyContent: 'center',
+      paddingHorizontal: 8,
+      width: 110,
+    },
+    catPickText: { color: colors.text, fontSize: 13, fontWeight: '600' },
+    check: { color: colors.text, fontSize: 20, marginRight: spacing.sm },
+    condBtn: {
+      alignItems: 'center',
+      backgroundColor: colors.chip,
+      borderRadius: radius.sm,
+      height: 40,
+      justifyContent: 'center',
+      paddingHorizontal: 8,
+      width: 110,
+    },
+    condText: { color: colors.text, fontSize: 13, fontWeight: '600' },
+    container: { backgroundColor: colors.background, flex: 1 },
+    count: { color: colors.muted, fontSize: 14, marginTop: spacing.sm },
+    editCol: { gap: 6 },
+    footer: { borderTopColor: colors.divider, borderTopWidth: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+    intro: { color: colors.muted, fontSize: 14, lineHeight: 20 },
+    missing: { color: colors.danger, fontSize: 13, marginTop: 2 },
+    openBtn: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+    openBtnText: { color: colors.muted, fontSize: 24 },
+    result: { color: colors.text, fontSize: 14, lineHeight: 20, marginTop: spacing.sm },
+    row: {
+      alignItems: 'center',
+      borderBottomColor: colors.divider,
+      borderBottomWidth: 1,
+      flexDirection: 'row',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+    },
+    rowMain: { alignItems: 'center', flex: 1, flexDirection: 'row', minWidth: 0 },
+    rowMeta: { color: colors.muted, fontSize: 13, marginTop: 2 },
+    rowName: { color: colors.text, fontSize: 15, fontWeight: '600' },
+    rowText: { flex: 1, minWidth: 0 },
+    sendBtn: {
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      borderRadius: radius.sm,
+      justifyContent: 'center',
+      minHeight: minTouchHeight,
+      paddingVertical: 12,
+    },
+    sendBtnDisabled: { opacity: 0.5 },
+    sendBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    top: { borderBottomColor: colors.divider, borderBottomWidth: 1, paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
+  });

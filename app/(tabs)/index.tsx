@@ -19,7 +19,9 @@ import { pushItemsToSheetLive } from '../../src/lib/sync';
 import { formatMoney } from '../../src/lib/pricing';
 import { parseDashboardDate } from '../../src/lib/dashboard';
 import { cleanName, coverPhotoUri } from '../../src/lib/listing';
-import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
+import { minTouchHeight, radius, spacing } from '../../src/lib/ui';
+import { useTheme, useThemedStyles } from '../../src/lib/theme-context';
+import type { ThemeColors } from '../../src/lib/themes';
 import type { Item, ItemStatus } from '../../src/lib/types';
 
 type Filter = 'All' | 'To List' | 'Listed' | 'Sold' | 'Draft' | 'Trash' | 'Deleted';
@@ -93,6 +95,7 @@ function matchesFilter(item: Item, filter: Filter): boolean {
 }
 
 function RowContent({ item }: { item: Item }) {
+  const styles = useThemedStyles(createStyles);
   const coverUri = coverPhotoUri(item);
   return (
     <>
@@ -127,6 +130,8 @@ function RowContent({ item }: { item: Item }) {
 
 export default function InventoryScreen() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const router = useRouter();
   const [items, setItems] = useState<Item[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -404,138 +409,139 @@ export default function InventoryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  badge: {
-    borderRadius: 10,
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '700',
-    overflow: 'hidden',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  headerActions: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginRight: spacing.sm,
-  },
-  container: { backgroundColor: colors.background, flex: 1 },
-  empty: { color: colors.muted, fontSize: 15, marginTop: spacing.xl, textAlign: 'center' },
-  footer: {
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-  },
-  footerBtn: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    flexBasis: '31%',
-    flexGrow: 1,
-    justifyContent: 'center',
-    minHeight: minTouchHeight,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.md,
-  },
-  footerBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  listContent: { paddingBottom: spacing.md },
-  row: {
-    alignItems: 'center',
-    flex: 1,
-    flexDirection: 'row',
-    minHeight: 68,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 14,
-  },
-  rowWrap: {
-    alignItems: 'center',
-    borderBottomColor: colors.divider,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-  },
-  checkbox: {
-    alignItems: 'center',
-    borderColor: colors.border,
-    borderRadius: 6,
-    borderWidth: 2,
-    height: 26,
-    justifyContent: 'center',
-    marginLeft: spacing.lg,
-    width: 26,
-  },
-  checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
-  checkMark: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  deleteFooterBtn: { backgroundColor: colors.danger },
-  disabledBtn: { opacity: 0.5 },
-  rowMain: { flex: 1, marginRight: spacing.sm },
-  rowMeta: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.xs },
-  thumb: { borderRadius: radius.sm, height: 64, marginRight: spacing.sm, width: 64 },
-  thumbPlaceholder: {
-    alignItems: 'center',
-    backgroundColor: colors.chip,
-    borderRadius: radius.sm,
-    height: 64,
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-    width: 64,
-  },
-  thumbPlaceholderText: { color: colors.muted, fontSize: 11, lineHeight: 14, textAlign: 'center' },
-  rowName: { color: colors.text, fontSize: 17, fontWeight: '600', lineHeight: 22 },
-  search: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flex: 1,
-    fontSize: 16,
-    minHeight: minTouchHeight,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  searchRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: 10,
-    paddingHorizontal: spacing.lg,
-  },
-  filterBtn: {
-    alignItems: 'center',
-    backgroundColor: colors.chip,
-    borderRadius: radius.sm,
-    flexDirection: 'row',
-    gap: spacing.xs,
-    justifyContent: 'center',
-    minHeight: minTouchHeight,
-    paddingHorizontal: spacing.md,
-  },
-  filterBtnText: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  modalBackdrop: {
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-  },
-  modalCard: {
-    backgroundColor: '#fff',
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    paddingVertical: spacing.xs,
-  },
-  modalRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    minHeight: minTouchHeight,
-    paddingHorizontal: spacing.lg,
-  },
-  modalRowText: { color: colors.text, fontSize: 17 },
-  modalCheck: { color: colors.primary, fontSize: 18, fontWeight: '800' },
-  summary: { backgroundColor: colors.card, paddingHorizontal: spacing.lg, paddingVertical: 10 },
-  summaryText: { color: colors.text, fontSize: 14, fontWeight: '600', lineHeight: 20 },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    badge: {
+      borderRadius: 10,
+      color: '#fff',
+      fontSize: 13,
+      fontWeight: '700',
+      overflow: 'hidden',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    headerActions: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.md,
+      marginRight: spacing.sm,
+    },
+    container: { backgroundColor: colors.background, flex: 1 },
+    empty: { color: colors.muted, fontSize: 15, marginTop: spacing.xl, textAlign: 'center' },
+    footer: {
+      borderTopColor: colors.border,
+      borderTopWidth: 1,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.md,
+    },
+    footerBtn: {
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      borderRadius: radius.sm,
+      flexBasis: '31%',
+      flexGrow: 1,
+      justifyContent: 'center',
+      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.md,
+    },
+    footerBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+    listContent: { paddingBottom: spacing.md },
+    row: {
+      alignItems: 'center',
+      flex: 1,
+      flexDirection: 'row',
+      minHeight: 68,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: 14,
+    },
+    rowWrap: {
+      alignItems: 'center',
+      borderBottomColor: colors.divider,
+      borderBottomWidth: 1,
+      flexDirection: 'row',
+    },
+    checkbox: {
+      alignItems: 'center',
+      borderColor: colors.border,
+      borderRadius: 6,
+      borderWidth: 2,
+      height: 26,
+      justifyContent: 'center',
+      marginLeft: spacing.lg,
+      width: 26,
+    },
+    checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+    checkMark: { color: '#fff', fontSize: 16, fontWeight: '800' },
+    deleteFooterBtn: { backgroundColor: colors.danger },
+    disabledBtn: { opacity: 0.5 },
+    rowMain: { flex: 1, marginRight: spacing.sm },
+    rowMeta: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.xs },
+    thumb: { borderRadius: radius.sm, height: 64, marginRight: spacing.sm, width: 64 },
+    thumbPlaceholder: {
+      alignItems: 'center',
+      backgroundColor: colors.chip,
+      borderRadius: radius.sm,
+      height: 64,
+      justifyContent: 'center',
+      marginRight: spacing.sm,
+      width: 64,
+    },
+    thumbPlaceholderText: { color: colors.muted, fontSize: 11, lineHeight: 14, textAlign: 'center' },
+    rowName: { color: colors.text, fontSize: 17, fontWeight: '600', lineHeight: 22 },
+    search: {
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      flex: 1,
+      fontSize: 16,
+      minHeight: minTouchHeight,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    searchRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.sm,
+      marginTop: 10,
+      paddingHorizontal: spacing.lg,
+    },
+    filterBtn: {
+      alignItems: 'center',
+      backgroundColor: colors.chip,
+      borderRadius: radius.sm,
+      flexDirection: 'row',
+      gap: spacing.xs,
+      justifyContent: 'center',
+      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.md,
+    },
+    filterBtnText: { color: colors.text, fontSize: 14, fontWeight: '700' },
+    modalBackdrop: {
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      flex: 1,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.xl,
+    },
+    modalCard: {
+      backgroundColor: '#fff',
+      borderRadius: radius.md,
+      overflow: 'hidden',
+      paddingVertical: spacing.xs,
+    },
+    modalRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.lg,
+    },
+    modalRowText: { color: colors.text, fontSize: 17 },
+    modalCheck: { color: colors.primary, fontSize: 18, fontWeight: '800' },
+    summary: { backgroundColor: colors.card, paddingHorizontal: spacing.lg, paddingVertical: 10 },
+    summaryText: { color: colors.text, fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  });

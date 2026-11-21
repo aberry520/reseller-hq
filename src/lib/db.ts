@@ -920,6 +920,7 @@ export function getSettings(): Settings {
     if (r.key === 'syncUrl') out.syncUrl = r.value;
     if (r.key === 'syncToken') out.syncToken = r.value;
     if (r.key === 'syncSheet') out.syncSheet = r.value || 'Inventory';
+    if (r.key === 'theme') out.theme = r.value || 'classic';
   }
   return out;
 }

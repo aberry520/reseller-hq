@@ -14,7 +14,9 @@ import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { formatDashboardDate, parseDashboardDate } from '../lib/dashboard';
-import { colors, minTouchHeight, radius, spacing } from '../lib/ui';
+import { minTouchHeight, radius, spacing } from '../lib/ui';
+import { useThemedStyles } from '../lib/theme-context';
+import type { ThemeColors } from '../lib/themes';
 
 export default function DateField({
   label,
@@ -26,6 +28,7 @@ export default function DateField({
   onChange: (date: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const styles = useThemedStyles(createStyles);
   const date = parseDashboardDate(value) ?? new Date();
 
   const handleChange = (_event: unknown, selected?: Date) => {
@@ -76,19 +79,20 @@ export default function DateField({
   );
 }
 
-const styles = StyleSheet.create({
-  chevron: { color: colors.muted, fontSize: 16 },
-  input: {
-    alignItems: 'center',
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 4,
-    minHeight: minTouchHeight,
-    paddingHorizontal: spacing.md,
-  },
-  inputText: { color: colors.text, fontSize: 16 },
-  label: { color: colors.muted, fontSize: 13, fontWeight: '600' },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    chevron: { color: colors.muted, fontSize: 16 },
+    input: {
+      alignItems: 'center',
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 4,
+      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.md,
+    },
+    inputText: { color: colors.text, fontSize: 16 },
+    label: { color: colors.muted, fontSize: 13, fontWeight: '600' },
+  });

@@ -1,15 +1,21 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { getSettings, saveSettings, clearLocalData } from '../../src/lib/db';
 import { getEbayStatus } from '../../src/services/ebay';
-import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
+import { minTouchHeight, radius, spacing } from '../../src/lib/ui';
+import { useTheme, useThemedStyles } from '../../src/lib/theme-context';
+import { THEME_ORDER, THEMES } from '../../src/lib/themes';
+import type { ThemeColors } from '../../src/lib/themes';
 import type { Settings } from '../../src/lib/types';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const { colors, themeName, setTheme } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [s, setS] = useState<Settings | null>(null);
 
   useFocusEffect(
@@ -22,8 +28,16 @@ export default function SettingsScreen() {
   const ebay = getEbayStatus();
 
   const save = () => {
-    saveSettings(s);
+    // The theme lives in the theme provider (it applies the moment it
+    // is tapped), so always write the provider's current theme rather
+    // than whatever this form loaded on focus.
+    saveSettings({ ...s, theme: themeName });
     Alert.alert('Saved', 'Settings saved on this device.');
+  };
+
+  const pickTheme = (name: (typeof THEME_ORDER)[number]) => {
+    setTheme(name);
+    setS((prev) => (prev ? { ...prev, theme: name } : prev));
   };
 
   const clear = () => {
@@ -56,6 +70,36 @@ export default function SettingsScreen() {
       ]}
       keyboardShouldPersistTaps="handled"
     >
+      <Text style={styles.label}>Appearance</Text>
+      <Text style={styles.note}>
+        Pick a color theme — it applies to the whole app right away and is remembered on this
+        device.
+      </Text>
+      {THEME_ORDER.map((name) => {
+        const t = THEMES[name];
+        const active = name === themeName;
+        return (
+          <Pressable
+            key={name}
+            style={[styles.themeRow, active && styles.themeRowActive]}
+            onPress={() => pickTheme(name)}
+            accessibilityLabel={`Theme: ${t.label}`}
+          >
+            <View style={styles.swatches}>
+              <View style={[styles.dot, { backgroundColor: t.colors.background, borderColor: t.colors.border }]} />
+              <View style={[styles.dot, { backgroundColor: t.colors.card, borderColor: t.colors.border }]} />
+              <View style={[styles.dot, { backgroundColor: t.colors.primary, borderColor: t.colors.primary }]} />
+              <View style={[styles.dot, { backgroundColor: t.colors.success, borderColor: t.colors.success }]} />
+            </View>
+            <Text style={styles.themeLabel}>
+              {t.label}
+              {t.dark ? '  ·  Dark' : ''}
+            </Text>
+            {active && <Ionicons name="checkmark-circle" size={22} color={colors.primary} />}
+          </Pressable>
+        );
+      })}
+
       <Text style={styles.label}>Background remover URL</Text>
       <TextInput
         style={styles.input}
@@ -168,31 +212,49 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  btn: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    justifyContent: 'center',
-    marginTop: 20,
-    minHeight: 52,
-    paddingVertical: spacing.md,
-  },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  container: { backgroundColor: colors.background, flex: 1 },
-  content: { paddingHorizontal: spacing.lg },
-  dangerBtn: { backgroundColor: '#b42318', marginTop: spacing.md },
-  input: {
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    color: colors.text,
-    fontSize: 16,
-    marginTop: spacing.xs,
-    minHeight: minTouchHeight,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  label: { color: colors.text, fontSize: 15, fontWeight: '700', marginTop: spacing.lg },
-  note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.xs },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    btn: {
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      borderRadius: radius.sm,
+      justifyContent: 'center',
+      marginTop: 20,
+      minHeight: 52,
+      paddingVertical: spacing.md,
+    },
+    btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
+    container: { backgroundColor: colors.background, flex: 1 },
+    content: { paddingHorizontal: spacing.lg },
+    dangerBtn: { backgroundColor: colors.danger, marginTop: spacing.md },
+    dot: { borderRadius: 9, borderWidth: 1, height: 18, width: 18 },
+    input: {
+      backgroundColor: colors.field,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      color: colors.text,
+      fontSize: 16,
+      marginTop: spacing.xs,
+      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+    },
+    label: { color: colors.text, fontSize: 15, fontWeight: '700', marginTop: spacing.lg },
+    note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.xs },
+    swatches: { flexDirection: 'row', gap: 4, marginRight: spacing.md },
+    themeLabel: { color: colors.text, flex: 1, fontSize: 15, fontWeight: '600' },
+    themeRow: {
+      alignItems: 'center',
+      backgroundColor: colors.field,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      flexDirection: 'row',
+      marginTop: spacing.sm,
+      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    themeRowActive: { borderColor: colors.primary, borderWidth: 2 },
+  });

@@ -5,7 +5,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
+import { minTouchHeight, radius, spacing } from '../../src/lib/ui';
+import { useTheme, useThemedStyles } from '../../src/lib/theme-context';
+import type { ThemeColors } from '../../src/lib/themes';
 
 type Tool = {
   href: '/calculator' | '/scan' | '/labels' | '/sync' | '/expenses' | '/ebay-drafts';
@@ -55,6 +57,8 @@ const TOOLS: Tool[] = [
 
 export default function ToolsScreen() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
 
   return (
     <ScrollView
@@ -82,27 +86,28 @@ export default function ToolsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { backgroundColor: colors.background, flex: 1 },
-  iconBox: {
-    alignItems: 'center',
-    backgroundColor: colors.chip,
-    borderRadius: radius.md,
-    height: minTouchHeight,
-    justifyContent: 'center',
-    marginRight: spacing.md,
-    width: minTouchHeight,
-  },
-  row: {
-    alignItems: 'center',
-    borderBottomColor: colors.divider,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    minHeight: 72,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  rowDesc: { color: colors.muted, fontSize: 14, lineHeight: 19, marginTop: 2 },
-  rowMain: { flex: 1, marginRight: spacing.sm },
-  rowTitle: { color: colors.text, fontSize: 17, fontWeight: '600' },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: { backgroundColor: colors.background, flex: 1 },
+    iconBox: {
+      alignItems: 'center',
+      backgroundColor: colors.chip,
+      borderRadius: radius.md,
+      height: minTouchHeight,
+      justifyContent: 'center',
+      marginRight: spacing.md,
+      width: minTouchHeight,
+    },
+    row: {
+      alignItems: 'center',
+      borderBottomColor: colors.divider,
+      borderBottomWidth: 1,
+      flexDirection: 'row',
+      minHeight: 72,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+    },
+    rowDesc: { color: colors.muted, fontSize: 14, lineHeight: 19, marginTop: 2 },
+    rowMain: { flex: 1, marginRight: spacing.sm },
+    rowTitle: { color: colors.text, fontSize: 17, fontWeight: '600' },
+  });

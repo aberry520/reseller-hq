@@ -13,10 +13,13 @@ import {
 } from '../../src/lib/pricing';
 import { getEbayStatus } from '../../src/services/ebay';
 import { appliesMacBidFees } from '../../src/lib/types';
-import { colors, minTouchHeight, radius, spacing } from '../../src/lib/ui';
+import { minTouchHeight, radius, spacing } from '../../src/lib/ui';
+import { useThemedStyles } from '../../src/lib/theme-context';
+import type { ThemeColors } from '../../src/lib/themes';
 
 export default function ListingScreen() {
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(createStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const [copied, setCopied] = useState('');
   const item = id ? getItem(id) : null;
@@ -103,32 +106,33 @@ export default function ListingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  btn: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    justifyContent: 'center',
-    marginTop: spacing.md,
-    minHeight: minTouchHeight,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    marginTop: spacing.lg,
-    padding: spacing.lg,
-  },
-  cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: spacing.sm },
-  container: { backgroundColor: colors.background, flex: 1 },
-  content: { paddingHorizontal: spacing.lg },
-  draft: { color: colors.text, fontSize: 14, lineHeight: 20, marginTop: 6 },
-  line: { color: colors.text, fontSize: 15, lineHeight: 21, marginTop: 6 },
-  meta: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 6 },
-  notFound: { paddingHorizontal: spacing.lg },
-  notFoundText: { color: colors.text, fontSize: 16 },
-  note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.sm },
-  title: { color: colors.text, fontSize: 22, fontWeight: '700', lineHeight: 28 },
-});
+const createStyles = (colors: ThemeColors) =>
+    StyleSheet.create({
+    btn: {
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      borderRadius: radius.sm,
+      justifyContent: 'center',
+      marginTop: spacing.md,
+      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+    },
+    btnText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
+    card: {
+      backgroundColor: colors.card,
+      borderRadius: radius.lg,
+      marginTop: spacing.lg,
+      padding: spacing.lg,
+    },
+    cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: spacing.sm },
+    container: { backgroundColor: colors.background, flex: 1 },
+    content: { paddingHorizontal: spacing.lg },
+    draft: { color: colors.text, fontSize: 14, lineHeight: 20, marginTop: 6 },
+    line: { color: colors.text, fontSize: 15, lineHeight: 21, marginTop: 6 },
+    meta: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 6 },
+    notFound: { paddingHorizontal: spacing.lg },
+    notFoundText: { color: colors.text, fontSize: 16 },
+    note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.sm },
+    title: { color: colors.text, fontSize: 22, fontWeight: '700', lineHeight: 28 },
+  });

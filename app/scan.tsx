@@ -5,10 +5,13 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { idFromQr } from '../src/lib/types';
 import { getItem } from '../src/lib/db';
-import { colors, minTouchHeight, radius, spacing } from '../src/lib/ui';
+import { minTouchHeight, radius, spacing } from '../src/lib/ui';
+import { useThemedStyles } from '../src/lib/theme-context';
+import type { ThemeColors } from '../src/lib/themes';
 
 export default function ScanScreen() {
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(createStyles);
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [message, setMessage] = useState('');
@@ -60,32 +63,33 @@ export default function ScanScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  bottomBar: {
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-  },
-  btn: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    justifyContent: 'center',
-    marginTop: spacing.md,
-    minHeight: minTouchHeight,
-    paddingHorizontal: 14,
-    paddingVertical: spacing.md,
-  },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  camera: { flex: 1 },
-  center: {
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-  },
-  container: { backgroundColor: colors.background, flex: 1 },
-  message: { color: colors.danger, fontSize: 15, paddingBottom: spacing.sm, textAlign: 'center' },
-  text: { color: colors.text, fontSize: 16, lineHeight: 22, textAlign: 'center' },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    bottomBar: {
+      backgroundColor: colors.background,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
+    },
+    btn: {
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      borderRadius: radius.sm,
+      justifyContent: 'center',
+      marginTop: spacing.md,
+      minHeight: minTouchHeight,
+      paddingHorizontal: 14,
+      paddingVertical: spacing.md,
+    },
+    btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    camera: { flex: 1 },
+    center: {
+      alignItems: 'center',
+      backgroundColor: colors.background,
+      flex: 1,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.xl,
+    },
+    container: { backgroundColor: colors.background, flex: 1 },
+    message: { color: colors.danger, fontSize: 15, paddingBottom: spacing.sm, textAlign: 'center' },
+    text: { color: colors.text, fontSize: 16, lineHeight: 22, textAlign: 'center' },
+  });
