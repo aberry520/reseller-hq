@@ -210,6 +210,7 @@ export default function LabelsScreen() {
       </View>
       <ScrollView
         horizontal
+        style={styles.chipScroll}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.chipRow}
       >
@@ -329,6 +330,10 @@ const createStyles = (colors: ThemeColors) =>
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.xs,
     },
+    // A horizontal ScrollView stretches to fill the column by default,
+    // which squeezed the item list out of view — pin it to the height
+    // of the chips themselves so the list below gets the space.
+    chipScroll: { flexGrow: 0, flexShrink: 0 },
     chipText: { color: colors.text, fontSize: 14, fontWeight: '600' },
     chipTextOn: { color: colors.primary },
     container: { backgroundColor: colors.background, flex: 1 },
