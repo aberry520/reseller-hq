@@ -921,6 +921,7 @@ export function getSettings(): Settings {
     if (r.key === 'syncToken') out.syncToken = r.value;
     if (r.key === 'syncSheet') out.syncSheet = r.value || 'Inventory';
     if (r.key === 'theme') out.theme = r.value || 'classic';
+    if (r.key === 'labelFontSize') out.labelFontSize = parseFloat(r.value) || 26;
   }
   return out;
 }

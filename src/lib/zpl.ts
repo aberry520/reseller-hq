@@ -16,6 +16,37 @@ import { qrFor } from './types';
 export const LABEL_W_DOTS = 406; // 2" at 203 dpi
 export const LABEL_H_DOTS = 203; // 1" at 203 dpi
 
+// Label font sizes (the ^A0 height/width in dots), picked on the labels
+// screen and remembered in Settings. The name's line splitting adapts
+// to the size, so a bigger font wraps to the second line sooner instead
+// of running off the right edge of the label — that overflow is what
+// used to cut names off.
+export const LABEL_FONT_SIZES = [
+  { key: 'small', label: 'Small', size: 22 },
+  { key: 'medium', label: 'Medium', size: 26 },
+  { key: 'large', label: 'Large', size: 32 },
+] as const;
+export const DEFAULT_LABEL_FONT_SIZE = 26;
+
+// The text column starts right of the QR code and runs to the label's
+// right edge (minus a small margin).
+const TEXT_X = 130;
+const TEXT_W_DOTS = LABEL_W_DOTS - TEXT_X - 6;
+
+// How many characters of font 0 fit on one line at a given size. Font
+// 0's average character advance is roughly 0.65 × the ^A size, so a
+// bigger font fits fewer characters per line.
+function charsPerLine(fontSize: number): number {
+  return Math.max(10, Math.floor(TEXT_W_DOTS / (fontSize * 0.65)));
+}
+
+// The matching size for the HTML/PDF labels (points for the name; the
+// ID runs 2pt larger), scaled from the ZPL size so all three outputs
+// look alike.
+function htmlFontPt(fontSize: number): number {
+  return Math.round((fontSize * 12) / DEFAULT_LABEL_FONT_SIZE);
+}
+
 function zplEscape(s: string): string {
   // ZPL field data: ^ and ~ start commands, so strip them.
   return s.replace(/[\^~]/g, '').trim();
@@ -46,18 +77,19 @@ export function shortName(raw: string): string {
   return (lastSpace > 12 ? cut.slice(0, lastSpace) : cut).trim();
 }
 
-// Split a short name into up to 2 ZPL text lines, each <= 18 chars.
-function splitNameLines(name: string): string[] {
-  if (name.length <= 18) return [name];
-  const cut = name.slice(0, 18);
+// Split a short name into up to 2 ZPL text lines that fit the text
+// column at the chosen font size (see charsPerLine).
+function splitNameLines(name: string, perLine: number): string[] {
+  if (name.length <= perLine) return [name];
+  const cut = name.slice(0, perLine);
   const lastSpace = cut.lastIndexOf(' ');
-  if (lastSpace >= 8) return [cut.slice(0, lastSpace).trim(), name.slice(lastSpace + 1, 36).trim()];
-  return [cut.trim(), name.slice(18, 36).trim()];
+  if (lastSpace >= 8) return [cut.slice(0, lastSpace).trim(), name.slice(lastSpace + 1, perLine * 2).trim()];
+  return [cut.trim(), name.slice(perLine, perLine * 2).trim()];
 }
 
-export function zplForItem(item: Item, qrMagnification = 4): string {
+export function zplForItem(item: Item, fontSize = DEFAULT_LABEL_FONT_SIZE, qrMagnification = 4): string {
   const name = zplEscape(shortName(item.name));
-  const nameLines = splitNameLines(name);
+  const nameLines = splitNameLines(name, charsPerLine(fontSize));
   const lines = [
     '^XA',
     `^PW${LABEL_W_DOTS}`,
@@ -66,19 +98,19 @@ export function zplForItem(item: Item, qrMagnification = 4): string {
     // (a stored code can go stale when an ID changes).
     `^FO10,10^BQN,2,${qrMagnification}`,
     `^FDQA,${zplEscape(qrFor(item.id))}^FS`,
-    // Short name, up to two lines, larger type so it stays readable.
-    `^FO130,20^A0N,26,26^FD${nameLines[0]}^FS`,
-    ...(nameLines[1] ? [`^FO130,52^A0N,26,26^FD${nameLines[1]}^FS`] : []),
-    // Human-readable ID.
-    `^FO130,118^A0N,28,28^FD${zplEscape(item.id)}^FS`,
+    // Short name, up to two lines, at the chosen font size.
+    `^FO${TEXT_X},20^A0N,${fontSize},${fontSize}^FD${nameLines[0]}^FS`,
+    ...(nameLines[1] ? [`^FO${TEXT_X},${20 + fontSize + 6}^A0N,${fontSize},${fontSize}^FD${nameLines[1]}^FS`] : []),
+    // Human-readable ID, a touch larger than the name.
+    `^FO${TEXT_X},118^A0N,${fontSize + 2},${fontSize + 2}^FD${zplEscape(item.id)}^FS`,
     '^PQ1',
     '^XZ',
   ];
   return lines.join('\n');
 }
 
-export function zplForItems(items: Item[]): string {
-  return items.map((it) => zplForItem(it)).join('\n');
+export function zplForItems(items: Item[], fontSize = DEFAULT_LABEL_FONT_SIZE): string {
+  return items.map((it) => zplForItem(it, fontSize)).join('\n');
 }
 
 /**
@@ -91,7 +123,8 @@ export function zplForItems(items: Item[]): string {
  * margins none). In the print dialog pick the Zebra GC420T (2" x 1" stock,
  * margins None, scale 100%) or "Save as PDF" for a PDF copy.
  */
-export function labelsPrintFragment(items: Item[]): string {
+export function labelsPrintFragment(items: Item[], fontSize = DEFAULT_LABEL_FONT_SIZE): string {
+  const namePt = htmlFontPt(fontSize);
   const cards = items
     .map((it) => {
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrFor(it.id))}`;
@@ -109,20 +142,21 @@ export function labelsPrintFragment(items: Item[]): string {
 .label:last-child { page-break-after: auto; break-after: auto; }
 .label img { width: 0.8in; height: 0.8in; flex: none; }
 .label-text { min-width: 0; flex: 1; }
-.label-name { font-size: 12pt; font-weight: bold; line-height: 1.15; overflow: hidden; overflow-wrap: break-word; }
-.label-id { font-size: 14pt; font-weight: bold; margin-top: 0.05in; }
+.label-name { font-size: ${namePt}pt; font-weight: bold; line-height: 1.15; overflow: hidden; overflow-wrap: break-word; }
+.label-id { font-size: ${namePt + 2}pt; font-weight: bold; margin-top: 0.05in; }
 </style>${cards}`;
 }
 
 /** Simple HTML for expo-print: one label card per item with a QR image. */
-export function labelsHtml(items: Item[]): string {
+export function labelsHtml(items: Item[], fontSize = DEFAULT_LABEL_FONT_SIZE): string {
+  const namePx = htmlFontPt(fontSize);
   const cards = items
     .map((it) => {
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrFor(it.id))}`;
       return `<div style="width:2in;height:1in;border:1px solid #000;display:inline-block;margin:4px;padding:4px;box-sizing:border-box;overflow:hidden;font-family:sans-serif;">
         <img src="${qrUrl}" style="width:0.8in;height:0.8in;float:left;margin-right:6px;" />
-        <div style="font-size:12px;font-weight:bold;">${escapeHtml(shortName(it.name))}</div>
-        <div style="font-size:14px;font-weight:bold;">${escapeHtml(it.id)}</div>
+        <div style="font-size:${namePx}px;font-weight:bold;">${escapeHtml(shortName(it.name))}</div>
+        <div style="font-size:${namePx + 2}px;font-weight:bold;">${escapeHtml(it.id)}</div>
       </div>`;
     })
     .join('\n');

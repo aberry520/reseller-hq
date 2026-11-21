@@ -8,8 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getAllItems } from '../src/lib/db';
-import { labelsHtml, labelsPrintFragment, shortName, zplForItems } from '../src/lib/zpl';
+import { getAllItems, getSettings, saveSettings } from '../src/lib/db';
+import { labelsHtml, labelsPrintFragment, shortName, zplForItems, LABEL_FONT_SIZES } from '../src/lib/zpl';
 import { minTouchHeight, radius, spacing } from '../src/lib/ui';
 import { useTheme, useThemedStyles } from '../src/lib/theme-context';
 import type { ThemeColors } from '../src/lib/themes';
@@ -44,17 +44,27 @@ export default function LabelsScreen() {
   const [items, setItems] = useState<Item[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [zplPath, setZplPath] = useState('');
+  // Label font size (ZPL dots), remembered in Settings so it only has
+  // to be picked once. Bigger type wraps the name sooner (the line
+  // splitting adapts), smaller type fits more per line.
+  const [fontSize, setFontSize] = useState(26);
 
   useFocusEffect(
     useCallback(() => {
       // Deleted items live only in the sheet — they are not listed here.
       const all = getAllItems().filter((it) => it.status !== 'Deleted');
       setItems(all);
+      setFontSize(getSettings().labelFontSize);
       setSelected(
         new Set(all.filter((it) => it.status === 'Draft' || it.status === 'Unlisted').map((it) => it.id)),
       );
     }, []),
   );
+
+  const pickFontSize = (size: number) => {
+    setFontSize(size);
+    saveSettings({ ...getSettings(), labelFontSize: size });
+  };
 
   const chosen = useMemo(() => items.filter((it) => selected.has(it.id)), [items, selected]);
 
@@ -99,7 +109,7 @@ export default function LabelsScreen() {
       Alert.alert('Nothing selected', 'Pick at least one item first.');
       return;
     }
-    const zpl = zplForItems(chosen);
+    const zpl = zplForItems(chosen, fontSize);
     if (Platform.OS === 'web') {
       // No app documents folder on web — download the file instead.
       const blob = new Blob([zpl], { type: 'text/plain' });
@@ -140,7 +150,7 @@ export default function LabelsScreen() {
       // or "Save as PDF".
       const printRoot = document.createElement('div');
       printRoot.id = 'reseller-print-root';
-      printRoot.innerHTML = labelsPrintFragment(chosen);
+      printRoot.innerHTML = labelsPrintFragment(chosen, fontSize);
       document.body.appendChild(printRoot);
       const cleanup = () => {
         printRoot.remove();
@@ -173,7 +183,7 @@ export default function LabelsScreen() {
     }
     // On the phone: build a PDF file and open the share sheet, so it can
     // be saved to Files (or sent anywhere) instead of going to a printer.
-    const { uri } = await Print.printToFileAsync({ html: labelsHtml(chosen) });
+    const { uri } = await Print.printToFileAsync({ html: labelsHtml(chosen, fontSize) });
     if (await Sharing.isAvailableAsync()) {
       await Sharing.shareAsync(uri, {
         mimeType: 'application/pdf',
@@ -225,6 +235,22 @@ export default function LabelsScreen() {
           );
         })}
       </ScrollView>
+      <View style={styles.fontRow}>
+        <Text style={styles.fontLabel}>Label font</Text>
+        {LABEL_FONT_SIZES.map((f) => {
+          const on = fontSize === f.size;
+          return (
+            <Pressable
+              key={f.key}
+              style={[styles.chip, on && styles.chipOn]}
+              onPress={() => pickFontSize(f.size)}
+              accessibilityLabel={`Label font: ${f.label}`}
+            >
+              <Text style={[styles.chipText, on && styles.chipTextOn]}>{f.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
       <View style={styles.btnRow}>
         <Pressable style={styles.btn} onPress={() => void saveZpl()}>
           <Text style={styles.btnText}>Save ZPL file</Text>
@@ -306,6 +332,14 @@ const createStyles = (colors: ThemeColors) =>
     chipText: { color: colors.text, fontSize: 14, fontWeight: '600' },
     chipTextOn: { color: colors.primary },
     container: { backgroundColor: colors.background, flex: 1 },
+    fontLabel: { color: colors.muted, flex: 1, fontSize: 14, fontWeight: '600' },
+    fontRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.xs,
+    },
     note: { color: colors.muted, fontSize: 13, lineHeight: 18, paddingBottom: 6, paddingHorizontal: spacing.lg },
     row: {
       alignItems: 'center',

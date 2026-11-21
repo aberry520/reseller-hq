@@ -114,6 +114,7 @@ export interface Settings {
   syncToken: string; // SYNC_TOKEN script property — the sync password
   syncSheet: string; // the sheet tab the sync reads/writes (default 'Inventory')
   theme: string; // color theme name (see src/lib/themes.ts; default 'classic')
+  labelFontSize: number; // QR label font size in ZPL dots (22 small / 26 medium / 32 large)
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -126,6 +127,7 @@ export const DEFAULT_SETTINGS: Settings = {
   syncToken: '',
   syncSheet: 'Inventory',
   theme: 'classic',
+  labelFontSize: 26,
 };
 
 export function normaliseStatus(raw: string): ItemStatus {
