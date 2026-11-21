@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, FlatList, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -187,38 +187,44 @@ export default function LabelsScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: spacing.sm }]}>
-      <Text style={styles.summary}>
-        {chosen.length} of {items.length} selected
-      </Text>
-      <Text style={styles.filterLabel}>Select by status</Text>
-      {STATUS_ORDER.filter((s) => (statusCounts.get(s) ?? 0) > 0).map((status) => {
-        const checked = statusAllSelected(status);
-        return (
-          <Pressable
-            key={status}
-            style={styles.filterRow}
-            onPress={() => toggleStatus(status)}
-            hitSlop={{ top: 4, bottom: 4 }}
-            accessibilityLabel={`Select all ${status} items`}
-          >
-            <Ionicons
-              name={checked ? 'checkbox' : 'square-outline'}
-              size={24}
-              color={checked ? colors.primary : colors.muted}
-            />
-            <Text style={styles.filterText}>{status === 'Unlisted' ? 'Unlisted (To List)' : status}</Text>
-            <Text style={styles.filterCount}>{statusCounts.get(status)}</Text>
-          </Pressable>
-        );
-      })}
-      <View style={styles.btnRow}>
-        <Pressable style={styles.btnSecondary} onPress={selectAll}>
-          <Text style={styles.btnSecondaryText}>Select all ({items.length})</Text>
+      <View style={styles.toolbar}>
+        <Text style={styles.summary}>
+          {chosen.length} of {items.length} selected
+        </Text>
+        <Pressable onPress={selectAll} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+          <Text style={styles.toolBtn}>Select all</Text>
         </Pressable>
-        <Pressable style={styles.btnSecondary} onPress={clearSelection}>
-          <Text style={styles.btnSecondaryText}>Clear</Text>
+        <Pressable onPress={clearSelection} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+          <Text style={styles.toolBtn}>Clear</Text>
         </Pressable>
       </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipRow}
+      >
+        {STATUS_ORDER.filter((s) => (statusCounts.get(s) ?? 0) > 0).map((status) => {
+          const checked = statusAllSelected(status);
+          return (
+            <Pressable
+              key={status}
+              style={[styles.chip, checked && styles.chipOn]}
+              onPress={() => toggleStatus(status)}
+              accessibilityLabel={`Select all ${status} items`}
+            >
+              <Ionicons
+                name={checked ? 'checkbox' : 'square-outline'}
+                size={18}
+                color={checked ? colors.primary : colors.muted}
+              />
+              <Text style={[styles.chipText, checked && styles.chipTextOn]}>
+                {status === 'Unlisted' ? 'To List' : status}
+              </Text>
+              <Text style={styles.chipCount}>{statusCounts.get(status)}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
       <View style={styles.btnRow}>
         <Pressable style={styles.btn} onPress={() => void saveZpl()}>
           <Text style={styles.btnText}>Save ZPL file</Text>
@@ -229,17 +235,10 @@ export default function LabelsScreen() {
       </View>
       {zplPath !== '' && <Text style={styles.note}>ZPL saved: {zplPath}</Text>}
       <Text style={styles.note}>
-        Zebra: 2&quot; × 1&quot; labels, 203 dpi, ^BQ QR. Print one test label and scan it before a batch.
+        {Platform.OS === 'web'
+          ? '2" × 1", 203 dpi. Export PDF opens the print dialog here — pick the Zebra GC420T (margins None, scale 100%). Print one test label and scan it first.'
+          : '2" × 1", 203 dpi. Export PDF shares a PDF — Save to Files to keep it. Print one test label and scan it first.'}
       </Text>
-      {Platform.OS === 'web' ? (
-        <Text style={styles.note}>
-          On web, Export PDF opens the browser print dialog right here — pick the Zebra GC420T (2&quot; × 1&quot;, margins None, scale 100%) or Save as PDF.
-        </Text>
-      ) : (
-        <Text style={styles.note}>
-          Export PDF makes a PDF file and opens the share sheet — pick Save to Files to keep it.
-        </Text>
-      )}
       <FlatList
         data={items}
         keyExtractor={(it) => it.id}
@@ -267,7 +266,7 @@ export default function LabelsScreen() {
 }
 
 const createStyles = (colors: ThemeColors) =>
-    StyleSheet.create({
+  StyleSheet.create({
     btn: {
       alignItems: 'center',
       backgroundColor: colors.primary,
@@ -278,40 +277,35 @@ const createStyles = (colors: ThemeColors) =>
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.md,
     },
-    btnRow: { flexDirection: 'row', gap: spacing.sm, padding: spacing.lg },
-    btnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-    btnSecondary: {
-      alignItems: 'center',
-      backgroundColor: colors.chip,
-      borderRadius: radius.sm,
-      flex: 1,
-      justifyContent: 'center',
-      minHeight: minTouchHeight,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.md,
-    },
-    btnSecondaryText: { color: colors.text, fontSize: 14, fontWeight: '700' },
-    check: { fontSize: 22, marginRight: spacing.sm },
-    container: { backgroundColor: colors.background, flex: 1 },
-    filterCount: { color: colors.muted, fontSize: 14, fontWeight: '600' },
-    filterLabel: {
-      color: colors.muted,
-      fontSize: 13,
-      fontWeight: '700',
-      letterSpacing: 0.4,
-      paddingHorizontal: spacing.lg,
-      paddingTop: spacing.md,
-      textTransform: 'uppercase',
-    },
-    filterRow: {
-      alignItems: 'center',
+    btnRow: {
       flexDirection: 'row',
       gap: spacing.sm,
-      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+    },
+    btnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+    check: { fontSize: 22, marginRight: spacing.sm },
+    chip: {
+      alignItems: 'center',
+      borderColor: colors.border,
+      borderRadius: 999,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: 4,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 6,
+    },
+    chipCount: { color: colors.muted, fontSize: 13, fontWeight: '600' },
+    chipOn: { backgroundColor: colors.chip, borderColor: colors.primary },
+    chipRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.xs,
     },
-    filterText: { color: colors.text, flex: 1, fontSize: 15, fontWeight: '600' },
+    chipText: { color: colors.text, fontSize: 14, fontWeight: '600' },
+    chipTextOn: { color: colors.primary },
+    container: { backgroundColor: colors.background, flex: 1 },
     note: { color: colors.muted, fontSize: 13, lineHeight: 18, paddingBottom: 6, paddingHorizontal: spacing.lg },
     row: {
       alignItems: 'center',
@@ -325,5 +319,13 @@ const createStyles = (colors: ThemeColors) =>
     rowMain: { flex: 1, marginRight: spacing.sm },
     rowMeta: { color: colors.muted, fontSize: 13, marginTop: 2 },
     rowName: { color: colors.text, fontSize: 16, fontWeight: '600' },
-    summary: { color: colors.text, fontSize: 14, fontWeight: '600', lineHeight: 20, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+    summary: { color: colors.text, flex: 1, fontSize: 14, fontWeight: '600', lineHeight: 20 },
+    toolbar: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.md,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.sm,
+    },
+    toolBtn: { color: colors.primary, fontSize: 14, fontWeight: '700' },
   });
