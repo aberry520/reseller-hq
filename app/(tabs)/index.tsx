@@ -5,6 +5,7 @@ import {
   Image,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -24,11 +25,22 @@ import { useTheme, useThemedStyles } from '../../src/lib/theme-context';
 import type { ThemeColors } from '../../src/lib/themes';
 import type { Item, ItemStatus } from '../../src/lib/types';
 
-type Filter = 'All' | 'To List' | 'Listed' | 'Sold' | 'Draft' | 'Trash' | 'Deleted';
+type Filter = 'All' | 'To List' | 'Listed' | 'Sold' | 'Recently sold' | 'Draft' | 'Trash' | 'Deleted';
 
-const FILTERS: Filter[] = ['All', 'To List', 'Listed', 'Sold', 'Draft', 'Trash', 'Deleted'];
+const FILTERS: Filter[] = ['All', 'To List', 'Listed', 'Sold', 'Recently sold', 'Draft', 'Trash', 'Deleted'];
 
-type Sort = 'id' | 'idDesc' | 'newest' | 'oldest' | 'name' | 'costAsc' | 'costDesc' | 'priceDesc';
+type Sort =
+  | 'id'
+  | 'idDesc'
+  | 'newest'
+  | 'oldest'
+  | 'name'
+  | 'costAsc'
+  | 'costDesc'
+  | 'priceDesc'
+  | 'soldNewest'
+  | 'soldPriceDesc'
+  | 'profitDesc';
 
 const SORTS: Array<{ key: Sort; label: string; short: string }> = [
   { key: 'idDesc', label: 'ID: high to low', short: 'ID ↓' },
@@ -39,12 +51,26 @@ const SORTS: Array<{ key: Sort; label: string; short: string }> = [
   { key: 'costAsc', label: 'Cost: low to high', short: 'Cost ↑' },
   { key: 'costDesc', label: 'Cost: high to low', short: 'Cost ↓' },
   { key: 'priceDesc', label: 'Suggested price: high to low', short: 'Price ↓' },
+  { key: 'soldNewest', label: 'Date sold: newest first', short: 'Date sold' },
+  { key: 'soldPriceDesc', label: 'Sold price: high to low', short: 'Sold price' },
+  { key: 'profitDesc', label: 'Profit: high to low', short: 'Profit ↓' },
 ];
+
+// Sale profit the same way the Dashboard computes it, so the numbers in
+// this list always match the Dashboard's: what the buyer paid, minus
+// fees and shipping, minus what the item cost.
+export function saleProfit(it: Item): number {
+  return it.soldPrice - it.fees - it.shipping - it.purchase;
+}
 
 function sortList(list: Item[], sort: Sort): Item[] {
   const out = [...list];
   const dateVal = (it: Item) => {
     const d = parseDashboardDate(it.datePurchased);
+    return d ? d.getTime() : 0;
+  };
+  const soldDateVal = (it: Item) => {
+    const d = parseDashboardDate(it.dateSold);
     return d ? d.getTime() : 0;
   };
   const idNum = (it: Item) => {
@@ -73,6 +99,19 @@ function sortList(list: Item[], sort: Sort): Item[] {
       return out.sort((a, b) => b.purchase - a.purchase || byId(a, b));
     case 'priceDesc':
       return out.sort((a, b) => b.suggestedPrice - a.suggestedPrice || byId(a, b));
+    case 'soldNewest':
+      // Items with no date sold (never sold, or sold before dates were
+      // tracked) sink to the bottom instead of jumping to the top.
+      return out.sort((a, b) => soldDateVal(b) - soldDateVal(a) || byId(a, b));
+    case 'soldPriceDesc':
+      return out.sort((a, b) => b.soldPrice - a.soldPrice || byId(a, b));
+    case 'profitDesc':
+      // Unsold items have no sale profit, so they sink below every sale.
+      return out.sort(
+        (a, b) =>
+          (b.soldPrice > 0 ? saleProfit(b) : -Infinity) -
+            (a.soldPrice > 0 ? saleProfit(a) : -Infinity) || byId(a, b),
+      );
   }
 }
 
@@ -89,9 +128,29 @@ const BADGE_COLORS: Record<string, string> = {
 function matchesFilter(item: Item, filter: Filter): boolean {
   if (filter === 'All') return true;
   if (filter === 'To List') return item.status === 'Draft' || item.status === 'Unlisted';
+  // Recently sold is the Sold pile, presented newest-sale-first (the
+  // filter picker switches the sort when it is chosen).
+  if (filter === 'Recently sold') return item.status === 'Sold';
   if (filter === 'Trash') return item.status === 'Trash' || item.status === 'Trash Return';
   if (filter === 'Deleted') return item.status === 'Deleted';
   return item.status === filter;
+}
+
+// Distinct non-blank values of a field across the list, with counts —
+// the filter menu's Place and Location sections are built from these,
+// so they only ever offer values that exist.
+function distinctCounts(
+  list: Item[],
+  pick: (it: Item) => string,
+): Array<{ value: string; count: number }> {
+  const map = new Map<string, number>();
+  for (const it of list) {
+    const v = pick(it).trim();
+    if (v) map.set(v, (map.get(v) ?? 0) + 1);
+  }
+  return [...map.entries()]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => a.value.localeCompare(b.value));
 }
 
 function RowContent({ item }: { item: Item }) {
@@ -110,11 +169,20 @@ function RowContent({ item }: { item: Item }) {
         <Text style={styles.rowName} numberOfLines={2}>
           {cleanName(item.name)}
         </Text>
-        <Text style={styles.rowMeta}>
-          {item.id} · bought {formatMoney(item.purchase)}
-          {item.suggestedPrice > 0 ? ` · suggested ${formatMoney(item.suggestedPrice)}` : ''}
-          {item.place ? ` · ${item.place}` : ''}
-        </Text>
+        {item.soldPrice > 0 ? (
+          // A sold item's useful numbers are the sale itself: what it
+          // sold for, when, and the profit — not the old list price.
+          <Text style={styles.rowMeta}>
+            {item.id} · sold {formatMoney(item.soldPrice)}
+            {item.dateSold ? ` · ${item.dateSold}` : ''} · profit {formatMoney(saleProfit(item))}
+          </Text>
+        ) : (
+          <Text style={styles.rowMeta}>
+            {item.id} · bought {formatMoney(item.purchase)}
+            {item.suggestedPrice > 0 ? ` · suggested ${formatMoney(item.suggestedPrice)}` : ''}
+            {item.place ? ` · ${item.place}` : ''}
+          </Text>
+        )}
       </View>
       <Text
         style={[
@@ -143,6 +211,10 @@ export default function InventoryScreen() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filterOpen, setFilterOpen] = useState(false);
+  // Place of purchase / location filters ('' = no filter). They stack
+  // with the status filter and the search.
+  const [placeFilter, setPlaceFilter] = useState('');
+  const [locationFilter, setLocationFilter] = useState('');
   // Guard against a row tap pushing the item screen more than once: a
   // second tap while a push is in flight is ignored. Cleared whenever
   // this screen regains focus (i.e. the user came back from the item).
@@ -177,15 +249,28 @@ export default function InventoryScreen() {
     [items, filter],
   );
 
+  const placeOptions = useMemo(
+    () => distinctCounts(visible, (it) => it.place),
+    [visible],
+  );
+  const locationOptions = useMemo(
+    () => distinctCounts(visible, (it) => it.location),
+    [visible],
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = visible.filter(
       (it) =>
         matchesFilter(it, filter) &&
+        (placeFilter === '' || it.place === placeFilter) &&
+        (locationFilter === '' || it.location === locationFilter) &&
         (q === '' || cleanName(it.name).toLowerCase().includes(q) || it.id.toLowerCase() === q),
     );
     return sortList(list, sort);
-  }, [visible, query, filter, sort]);
+  }, [visible, query, filter, placeFilter, locationFilter, sort]);
+
+  const extraFilters = (placeFilter ? 1 : 0) + (locationFilter ? 1 : 0);
 
   const sortLabel = SORTS.find((s) => s.key === sort)?.short ?? 'ID';
 
@@ -300,10 +385,13 @@ export default function InventoryScreen() {
         <Pressable
           style={styles.filterBtn}
           onPress={() => setFilterOpen(true)}
-          accessibilityLabel={`Filter, currently ${filter}`}
+          accessibilityLabel={`Filter, currently ${filter}${placeFilter ? `, place ${placeFilter}` : ''}${locationFilter ? `, location ${locationFilter}` : ''}`}
         >
           <Ionicons name="filter-outline" size={20} color={colors.text} />
-          <Text style={styles.filterBtnText}>{filter}</Text>
+          <Text style={styles.filterBtnText}>
+            {filter}
+            {extraFilters > 0 ? ` +${extraFilters}` : ''}
+          </Text>
         </Pressable>
       </View>
       <Modal
@@ -314,19 +402,21 @@ export default function InventoryScreen() {
       >
         <Pressable style={styles.modalBackdrop} onPress={() => setSortOpen(false)}>
           <View style={styles.modalCard}>
-            {SORTS.map((s) => (
-              <Pressable
-                key={s.key}
-                style={styles.modalRow}
-                onPress={() => {
-                  setSort(s.key);
-                  setSortOpen(false);
-                }}
-              >
-                <Text style={styles.modalRowText}>{s.label}</Text>
-                {sort === s.key && <Text style={styles.modalCheck}>✓</Text>}
-              </Pressable>
-            ))}
+            <ScrollView>
+              {SORTS.map((s) => (
+                <Pressable
+                  key={s.key}
+                  style={styles.modalRow}
+                  onPress={() => {
+                    setSort(s.key);
+                    setSortOpen(false);
+                  }}
+                >
+                  <Text style={styles.modalRowText}>{s.label}</Text>
+                  {sort === s.key && <Text style={styles.modalCheck}>✓</Text>}
+                </Pressable>
+              ))}
+            </ScrollView>
           </View>
         </Pressable>
       </Modal>
@@ -338,19 +428,69 @@ export default function InventoryScreen() {
       >
         <Pressable style={styles.modalBackdrop} onPress={() => setFilterOpen(false)}>
           <View style={styles.modalCard}>
-            {FILTERS.map((f) => (
-              <Pressable
-                key={f}
-                style={styles.modalRow}
-                onPress={() => {
-                  setFilter(f);
-                  setFilterOpen(false);
-                }}
-              >
-                <Text style={styles.modalRowText}>{f}</Text>
-                {filter === f && <Text style={styles.modalCheck}>✓</Text>}
+            <ScrollView>
+              <Text style={styles.modalSection}>Status</Text>
+              {FILTERS.map((f) => (
+                <Pressable
+                  key={f}
+                  style={styles.modalRow}
+                  onPress={() => {
+                    setFilter(f);
+                    // Recently sold only reads as "recent" sorted by
+                    // the sale date, newest first.
+                    if (f === 'Recently sold') setSort('soldNewest');
+                  }}
+                >
+                  <Text style={styles.modalRowText}>{f}</Text>
+                  {filter === f && <Text style={styles.modalCheck}>✓</Text>}
+                </Pressable>
+              ))}
+              {placeOptions.length > 0 && (
+                <>
+                  <Text style={styles.modalSection}>Place of purchase</Text>
+                  <Pressable style={styles.modalRow} onPress={() => setPlaceFilter('')}>
+                    <Text style={styles.modalRowText}>All places</Text>
+                    {placeFilter === '' && <Text style={styles.modalCheck}>✓</Text>}
+                  </Pressable>
+                  {placeOptions.map((o) => (
+                    <Pressable
+                      key={o.value}
+                      style={styles.modalRow}
+                      onPress={() => setPlaceFilter(o.value)}
+                    >
+                      <Text style={styles.modalRowText}>
+                        {o.value} ({o.count})
+                      </Text>
+                      {placeFilter === o.value && <Text style={styles.modalCheck}>✓</Text>}
+                    </Pressable>
+                  ))}
+                </>
+              )}
+              {locationOptions.length > 0 && (
+                <>
+                  <Text style={styles.modalSection}>Location</Text>
+                  <Pressable style={styles.modalRow} onPress={() => setLocationFilter('')}>
+                    <Text style={styles.modalRowText}>All locations</Text>
+                    {locationFilter === '' && <Text style={styles.modalCheck}>✓</Text>}
+                  </Pressable>
+                  {locationOptions.map((o) => (
+                    <Pressable
+                      key={o.value}
+                      style={styles.modalRow}
+                      onPress={() => setLocationFilter(o.value)}
+                    >
+                      <Text style={styles.modalRowText}>
+                        {o.value} ({o.count})
+                      </Text>
+                      {locationFilter === o.value && <Text style={styles.modalCheck}>✓</Text>}
+                    </Pressable>
+                  ))}
+                </>
+              )}
+              <Pressable style={styles.modalRow} onPress={() => setFilterOpen(false)}>
+                <Text style={styles.modalDoneText}>Done</Text>
               </Pressable>
-            ))}
+            </ScrollView>
           </View>
         </Pressable>
       </Modal>
@@ -530,9 +670,20 @@ const createStyles = (colors: ThemeColors) =>
     modalCard: {
       backgroundColor: '#fff',
       borderRadius: radius.md,
+      maxHeight: '85%',
       overflow: 'hidden',
       paddingVertical: spacing.xs,
     },
+    modalSection: {
+      color: colors.muted,
+      fontSize: 12,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
+      textTransform: 'uppercase',
+    },
+    modalDoneText: { color: colors.primary, fontSize: 17, fontWeight: '700' },
     modalRow: {
       alignItems: 'center',
       flexDirection: 'row',
