@@ -39,7 +39,7 @@ const TOOLS: Tool[] = [
     href: '/mark-labeled',
     icon: 'checkmark-done-outline',
     title: 'Mark as labeled',
-    desc: 'Scan QR labels to mark items as labeled — stays on the scanner so you can work through a batch.',
+    desc: 'Enter a location, then scan QR labels — each item is marked labeled and put at that location.',
   },
   {
     href: '/sync',
