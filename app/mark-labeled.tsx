@@ -126,6 +126,22 @@ export default function MarkLabeledScreen() {
     );
   };
 
+  // Post location: the batch is done. Every scan already saved its
+  // item (labeled + location, sheet included), so posting just closes
+  // the session — the list and the location field clear, and the tool
+  // is ready for the next location.
+  const postLocation = () => {
+    const n = marked.length;
+    if (n === 0) return;
+    const loc = location.trim();
+    setMarked([]);
+    setLocation('');
+    setMessageOk(true);
+    setMessage(
+      `✓ Posted ${n} item${n === 1 ? '' : 's'}${loc ? ` to ${loc}` : ''} — ready for the next location`,
+    );
+  };
+
   return (
     <View style={styles.container}>
       <CameraView
@@ -155,6 +171,14 @@ export default function MarkLabeledScreen() {
             ? 'Nothing marked yet this session'
             : `${marked.length} marked this session`}
         </Text>
+        <Pressable
+          style={[styles.postBtn, marked.length === 0 && styles.disabledBtn]}
+          onPress={postLocation}
+          disabled={marked.length === 0}
+          accessibilityLabel="Post location"
+        >
+          <Text style={styles.postBtnText}>Post location</Text>
+        </Pressable>
         <FlatList
           data={marked}
           keyExtractor={(m) => m.id}
@@ -203,6 +227,17 @@ const createStyles = (colors: ThemeColors) =>
     },
     container: { backgroundColor: colors.background, flex: 1 },
     count: { color: colors.muted, fontSize: 14, fontWeight: '600', marginTop: spacing.sm },
+    disabledBtn: { opacity: 0.5 },
+    postBtn: {
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      borderRadius: radius.sm,
+      justifyContent: 'center',
+      marginTop: spacing.sm,
+      minHeight: minTouchHeight,
+      paddingHorizontal: spacing.md,
+    },
+    postBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
     locationInput: {
       backgroundColor: colors.field,
       borderColor: colors.border,
