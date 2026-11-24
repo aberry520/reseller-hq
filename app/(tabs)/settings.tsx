@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -208,6 +208,12 @@ export default function SettingsScreen() {
       <Pressable style={[styles.btn, styles.dangerBtn]} onPress={clear}>
         <Text style={styles.btnText}>Clear local data</Text>
       </Pressable>
+
+      <Image
+        source={require('../../assets/logo-horizontal.png')}
+        style={styles.logoFooter}
+        resizeMode="contain"
+      />
     </ScrollView>
   );
 }
@@ -241,6 +247,13 @@ const createStyles = (colors: ThemeColors) =>
       paddingVertical: spacing.md,
     },
     label: { color: colors.text, fontSize: 15, fontWeight: '700', marginTop: spacing.lg },
+    logoFooter: {
+      alignSelf: 'center',
+      borderRadius: 12,
+      height: 100,
+      marginTop: spacing.xl,
+      width: 280,
+    },
     note: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.xs },
     swatches: { flexDirection: 'row', gap: 4, marginRight: spacing.md },
     themeLabel: { color: colors.text, flex: 1, fontSize: 15, fontWeight: '600' },

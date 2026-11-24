@@ -14,7 +14,7 @@
 // when negative) and shows the live expense count and total.
 
 import { useCallback, useState } from 'react';
-import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -241,7 +241,10 @@ export default function DashboardScreen() {
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: insets.bottom + spacing.xl }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
-      <Text style={styles.title}>Dashboard</Text>
+      <View style={styles.titleRow}>
+        <Image source={require('../../assets/icon.png')} style={styles.logoMark} />
+        <Text style={styles.title}>Dashboard</Text>
+      </View>
 
       <View style={styles.headerCard}>
         <View style={styles.headerRow}>
@@ -490,6 +493,7 @@ const createStyles = (colors: ThemeColors) =>
       padding: spacing.md,
     },
     headerRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+    logoMark: { borderRadius: 8, height: 34, width: 34 },
     note: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: spacing.sm },
     option: {
       alignItems: 'center',
@@ -557,6 +561,7 @@ const createStyles = (colors: ThemeColors) =>
     tileLabel: { color: colors.muted, fontSize: 13, fontWeight: '600' },
     tileValue: { color: colors.text, fontSize: 20, fontWeight: '800', marginTop: 4 },
     title: { color: colors.text, fontSize: 20, fontWeight: '700' },
+    titleRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
     valueBad: { color: colors.danger },
     valueGood: { color: colors.success },
   });

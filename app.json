@@ -2,7 +2,7 @@
   "expo": {
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0A1833",
         "backgroundImage": "./assets/android-icon-background.png",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -37,6 +37,11 @@
     ],
     "scheme": "reseller",
     "slug": "reseller-hq",
+    "splash": {
+      "backgroundColor": "#081025",
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain"
+    },
     "userInterfaceStyle": "light",
     "version": "1.0.0",
     "web": {
