@@ -59,6 +59,7 @@ const items: Item[] = SEED_ITEMS.map((s) => ({
   ebayCategoryId: '',
   ebayCondition: 'Used - Good',
   photoUrls: [],
+  labeled: false,
 }));
 
 const start = parseDashboardDate('10/1/2026') as Date;
@@ -166,6 +167,7 @@ const deletedItem: Item = {
   ebayCategoryId: '',
   ebayCondition: 'Used - Good',
   photoUrls: [],
+  labeled: false,
 };
 const dDelItem = computeDashboard([...items, deletedItem], EXPENSES_SEED_ITEMS, start, end);
 check('items: Deleted item excluded from range sales', dDelItem.range.all.numberOfSales, d.range.all.numberOfSales);

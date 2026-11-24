@@ -281,6 +281,7 @@ export default function LabelsScreen() {
                 </Text>
                 <Text style={styles.rowMeta}>
                   {item.id} · {item.status}
+                  {item.labeled ? ' · Labeled ✓' : ' · Needs label'}
                 </Text>
               </View>
               <QRCode value={qrFor(item.id)} size={44} />

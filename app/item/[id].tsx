@@ -665,6 +665,19 @@ export default function ItemScreen() {
     setTimeout(() => setStatusNote(''), 3000);
   };
 
+  // The labeled flag applies immediately, like status — it is set by
+  // scanning the QR, and this row is how it is fixed by hand (a label
+  // fell off, or the wrong item was scanned). App-only: the sheet has
+  // no column for it, so there is nothing to push.
+  const setLabeled = (v: boolean) => {
+    const next = { ...item, labeled: v };
+    updateItem(item.id, next);
+    setItem(next);
+    setOpenField(null);
+    setDetailsNote(v ? '✓ Marked as labeled' : '✓ Label cleared');
+    setTimeout(() => setDetailsNote(''), 3000);
+  };
+
   // Price calculator inputs (cost + estimated shipping) save
   // themselves: this runs when a field loses focus (and when the
   // MAC.BID toggle flips), so the calculator has no Save button. The
@@ -1111,6 +1124,7 @@ export default function ItemScreen() {
             {item.place ? ` · ${item.place}` : ''}
             {item.dateListed ? ` · listed ${item.dateListed}` : ''}
             {item.dateSold ? ` · sold ${item.dateSold}` : ''}
+            {item.labeled ? ' · Labeled ✓' : ''}
           </Text>
         )}
         {detailsOpen && (
@@ -1146,6 +1160,37 @@ export default function ItemScreen() {
                   Sold is not in this list on purpose — use Mark as Sold so the sale details are
                   recorded.
                 </Text>
+              </View>
+            )}
+            <Pressable style={styles.detailRow} onPress={() => toggleField('labeled')} hitSlop={{ top: 4, bottom: 4 }}>
+              <Text style={styles.detailLabel}>Labeled</Text>
+              <Text style={styles.detailValue} numberOfLines={1}>
+                {item.labeled ? 'Yes' : 'Not yet'}
+              </Text>
+              <Ionicons name={openField === 'labeled' ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} />
+            </Pressable>
+            {openField === 'labeled' && (
+              <View style={styles.detailEditor}>
+                <Pressable
+                  style={styles.optRow}
+                  onPress={() => setLabeled(true)}
+                  hitSlop={{ top: 4, bottom: 4 }}
+                >
+                  <Text style={[styles.optText, item.labeled && styles.optTextActive]}>
+                    Yes — the QR label is on the item
+                  </Text>
+                  {item.labeled && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                </Pressable>
+                <Pressable
+                  style={styles.optRow}
+                  onPress={() => setLabeled(false)}
+                  hitSlop={{ top: 4, bottom: 4 }}
+                >
+                  <Text style={[styles.optText, !item.labeled && styles.optTextActive]}>
+                    No — not labeled yet
+                  </Text>
+                  {!item.labeled && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                </Pressable>
               </View>
             )}
             <Pressable style={styles.detailRow} onPress={() => toggleField('location')} hitSlop={{ top: 4, bottom: 4 }}>

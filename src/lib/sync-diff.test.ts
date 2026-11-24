@@ -27,6 +27,9 @@ function check(name: string, ok: boolean): void {
 }
 
 function makeItem(over: Partial<Item> = {}): Item {
+  // Pull labeled out of the spread: a Partial<Item> spread can carry
+  // labeled: undefined, which is not a valid boolean for the fixture.
+  const { labeled, ...rest } = over;
   return {
     id: 'RB-001',
     name: 'Widget',
@@ -56,7 +59,8 @@ function makeItem(over: Partial<Item> = {}): Item {
     ebayCategoryId: '',
     ebayCondition: 'Used - Good',
     photoUrls: [],
-    ...over,
+    labeled: labeled ?? false,
+    ...rest,
   };
 }
 

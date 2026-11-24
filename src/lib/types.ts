@@ -88,6 +88,10 @@ export interface Item {
   // generating rows for the ebay-draft tab.
   ebayCategoryId: string; // eBay category number, e.g. '21139'
   ebayCondition: string; // eBay condition name, e.g. 'Used - Good'
+  // App-only: the physical QR label has been printed and stuck on the
+  // item. Set by scanning the label (Scan tab), or from the item's
+  // Details. Like the eBay fields, the sheet has no column for it.
+  labeled: boolean;
 }
 
 // eBay condition names accepted by the bulk draft template. Default for

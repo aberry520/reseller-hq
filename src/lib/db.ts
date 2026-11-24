@@ -112,6 +112,7 @@ function seedToItem(s: (typeof SEED_ITEMS)[number], now: string): Item {
     ebayCategoryId: '',
     ebayCondition: DEFAULT_EBAY_CONDITION,
     photoUrls: [],
+    labeled: false,
   };
 }
 
@@ -154,6 +155,11 @@ function webLoad(): void {
     // Photo URLs predate this version — default them on old items.
     if (it.photoUrls === undefined) {
       it.photoUrls = [];
+      qrFixed = true;
+    }
+    // Labeled flag predates this version — default it on old items.
+    if (it.labeled === undefined) {
+      it.labeled = false;
       qrFixed = true;
     }
   }
@@ -252,7 +258,8 @@ export function initDb(): void {
       createdAt TEXT NOT NULL DEFAULT '',
       ebayCategoryId TEXT NOT NULL DEFAULT '',
       ebayCondition TEXT NOT NULL DEFAULT 'Used - Good',
-      photoUrls TEXT NOT NULL DEFAULT '[]'
+      photoUrls TEXT NOT NULL DEFAULT '[]',
+      labeled INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
@@ -309,6 +316,12 @@ export function initDb(): void {
   // Migration for installs created before photo URLs existed.
   try {
     d.execSync(`ALTER TABLE items ADD COLUMN photoUrls TEXT NOT NULL DEFAULT '[]';`);
+  } catch {
+    // Column already exists.
+  }
+  // Migration for installs created before the labeled flag existed.
+  try {
+    d.execSync(`ALTER TABLE items ADD COLUMN labeled INTEGER NOT NULL DEFAULT 0;`);
   } catch {
     // Column already exists.
   }
@@ -404,11 +417,12 @@ export function initDb(): void {
   d.runSync("INSERT OR IGNORE INTO settings (key, value) VALUES ('__seeded', '1')");
 }
 
-type ItemRow = Omit<Item, 'photos' | 'whiteBgPhotos' | 'photoUrls' | 'macBidFees'> & {
+type ItemRow = Omit<Item, 'photos' | 'whiteBgPhotos' | 'photoUrls' | 'macBidFees' | 'labeled'> & {
   photos: string;
   whiteBgPhotos: string;
   photoUrls: string;
   macBidFees: number;
+  labeled: number;
 };
 
 function rowToItem(row: ItemRow): Item {
@@ -426,6 +440,8 @@ function rowToItem(row: ItemRow): Item {
     ebayCategoryId: row.ebayCategoryId ?? '',
     ebayCondition: row.ebayCondition ?? DEFAULT_EBAY_CONDITION,
     photoUrls: safeParse(row.photoUrls),
+    // Labeled flag predates this column on old installs — default false.
+    labeled: row.labeled === 1,
   };
 }
 
@@ -490,7 +506,7 @@ export function updateItem(id: string, patch: Partial<Item>): void {
       researchPrice=?, notes=?, place=?, datePurchased=?, status=?, dateListed=?,
       dateSold=?, soldPrice=?, fees=?, shipping=?, profit=?, revenue=?,
       profitMargin=?, macBidFees=?, location=?, qrCode=?, photos=?, whiteBgPhotos=?,
-      ebayCategoryId=?, ebayCondition=?, photoUrls=?
+      ebayCategoryId=?, ebayCondition=?, photoUrls=?, labeled=?
      WHERE id=?`,
     [
       next.name,
@@ -519,6 +535,7 @@ export function updateItem(id: string, patch: Partial<Item>): void {
       next.ebayCategoryId ?? '',
       next.ebayCondition ?? DEFAULT_EBAY_CONDITION,
       JSON.stringify(next.photoUrls ?? []),
+      next.labeled ? 1 : 0,
       id,
     ],
   );
@@ -741,6 +758,7 @@ export function addItem(input: {
     ebayCategoryId: '',
     ebayCondition: DEFAULT_EBAY_CONDITION,
     photoUrls: [],
+    labeled: false,
   };
   if (IS_WEB) {
     webLoad();
