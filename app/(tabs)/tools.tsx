@@ -10,8 +10,8 @@ import { useTheme, useThemedStyles } from '../../src/lib/theme-context';
 import type { ThemeColors } from '../../src/lib/themes';
 
 type Tool = {
-  href: '/calculator' | '/scan' | '/labels' | '/sync' | '/expenses' | '/ebay-drafts';
-  icon: 'calculator-outline' | 'scan-outline' | 'pricetag-outline' | 'sync-outline' | 'receipt-outline' | 'bag-outline';
+  href: '/calculator' | '/scan' | '/labels' | '/mark-labeled' | '/sync' | '/expenses' | '/ebay-drafts';
+  icon: 'calculator-outline' | 'scan-outline' | 'pricetag-outline' | 'checkmark-done-outline' | 'sync-outline' | 'receipt-outline' | 'bag-outline';
   title: string;
   desc: string;
 };
@@ -34,6 +34,12 @@ const TOOLS: Tool[] = [
     icon: 'pricetag-outline',
     title: 'QR labels',
     desc: 'Print QR labels for your items on the Zebra printer.',
+  },
+  {
+    href: '/mark-labeled',
+    icon: 'checkmark-done-outline',
+    title: 'Mark as labeled',
+    desc: 'Scan QR labels to mark items as labeled — stays on the scanner so you can work through a batch.',
   },
   {
     href: '/sync',

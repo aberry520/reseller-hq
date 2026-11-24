@@ -4,7 +4,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { idFromQr } from '../src/lib/types';
-import { getItem, updateItem } from '../src/lib/db';
+import { getItem } from '../src/lib/db';
 import { minTouchHeight, radius, spacing } from '../src/lib/ui';
 import { useThemedStyles } from '../src/lib/theme-context';
 import type { ThemeColors } from '../src/lib/themes';
@@ -15,7 +15,6 @@ export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [message, setMessage] = useState('');
-  const [messageOk, setMessageOk] = useState(false);
   const router = useRouter();
 
   if (!permission) return <View style={styles.container} />;
@@ -34,26 +33,13 @@ export default function ScanScreen() {
     if (scanned) return;
     const id = idFromQr(data);
     if (!id) {
-      setMessageOk(false);
       setMessage(`Not a Reseller HQ code: ${data}`);
       return;
     }
     const item = getItem(id);
     if (!item) {
-      setMessageOk(false);
       setMessage(`No item found for ${id}`);
       return;
-    }
-    // A scannable QR proves the physical label is on the item, so
-    // scanning marks it labeled — no extra tap needed. The note is
-    // still here when the user comes back to scan the next item.
-    if (!item.labeled) {
-      updateItem(id, { labeled: true });
-      setMessageOk(true);
-      setMessage(`✓ ${id} marked as labeled`);
-    } else {
-      setMessageOk(true);
-      setMessage(`${id} is already labeled`);
     }
     setScanned(true);
     router.push(`/item/${id}`);
@@ -71,9 +57,7 @@ export default function ScanScreen() {
       />
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.lg }]}>
         <Text style={styles.text}>Point the camera at a QR label to open that item.</Text>
-        {message !== '' && (
-          <Text style={[styles.message, messageOk && styles.messageOk]}>{message}</Text>
-        )}
+        {message !== '' && <Text style={styles.message}>{message}</Text>}
       </View>
     </View>
   );
@@ -107,6 +91,5 @@ const createStyles = (colors: ThemeColors) =>
     },
     container: { backgroundColor: colors.background, flex: 1 },
     message: { color: colors.danger, fontSize: 15, paddingBottom: spacing.sm, textAlign: 'center' },
-    messageOk: { color: colors.success },
     text: { color: colors.text, fontSize: 16, lineHeight: 22, textAlign: 'center' },
   });

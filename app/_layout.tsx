@@ -33,6 +33,7 @@ function AppShell() {
         <Stack.Screen name="add" options={{ title: 'Add item' }} />
         <Stack.Screen name="scan" options={{ title: 'Scan QR' }} />
         <Stack.Screen name="labels" options={{ title: 'QR labels' }} />
+        <Stack.Screen name="mark-labeled" options={{ title: 'Mark as labeled' }} />
         <Stack.Screen name="calculator" options={{ title: 'Margin calculator' }} />
         <Stack.Screen name="sync" options={{ title: 'Sheet sync' }} />
         <Stack.Screen name="expenses" options={{ title: 'Expenses' }} />
